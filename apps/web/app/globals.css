@@ -1,0 +1,120 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Horolog design tokens — light only, deliberately.
+
+   Swiss-modernist restraint rather than fashion "luxury": hairlines, one hue,
+   tight optical type, a warm near-white ground. No dark variant ships; a
+   half-tuned second theme reads worse than one that is exact.
+   --------------------------------------------------------------------------- */
+
+@theme {
+  --color-bg: #fbfbfa;          /* warm off-white; #fff reads cheap full-bleed */
+  --color-surface: #ffffff;
+  --color-sunk: #f7f6f4;        /* gutters, rails, other people's meetings */
+
+  --color-fg: #14110f;          /* 18:1 on bg — AAA */
+  --color-fg-muted: #6b655f;    /* 5.4:1 — the smallest text colour allowed */
+  --color-fg-subtle: #9c958d;   /* 2.9:1 — hairlines and dividers ONLY */
+
+  --color-line: #e9e6e2;
+  --color-line-strong: #d8d3cd;
+
+  --color-accent: #4f46e5;
+  --color-accent-hover: #4338ca;
+  --color-on-accent: #ffffff;
+
+  --color-danger: #c2410c;      /* burnt, not fire-engine */
+  --color-ok: #15803d;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+
+  --radius-block: 6px;
+  --radius-card: 8px;
+  --radius-modal: 10px;
+
+  /* Warm-tinted, layered, low alpha. Pure-black shadows are most of what
+     makes an interface look cheap. */
+  --shadow-sm: 0 1px 2px rgba(20, 17, 15, 0.04);
+  --shadow-md: 0 4px 12px rgba(20, 17, 15, 0.06), 0 1px 2px rgba(20, 17, 15, 0.04);
+  --shadow-pop: 0 12px 32px rgba(20, 17, 15, 0.1), 0 2px 6px rgba(20, 17, 15, 0.05);
+}
+
+* {
+  border-color: var(--color-line);
+}
+
+html {
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  /* Guard against stray horizontal scroll here rather than on a wrapper div:
+     on a descendant, overflow-x would make it a scroll container and break
+     every `position: sticky` inside it. */
+  overflow-x: clip;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-optical-sizing: auto;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+h1, h2, h3, .tracking-tight-optical {
+  letter-spacing: -0.022em;
+}
+
+/* Every clock time and duration. Without this, digits change width as the
+   plan updates and the whole grid twitches. */
+.tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+/* Scoped to the grid so the page itself never scrolls sideways. */
+.scroll-x {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+.scroll-x::-webkit-scrollbar { height: 8px; }
+.scroll-x::-webkit-scrollbar-thumb {
+  background: var(--color-line-strong);
+  border-radius: 4px;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+.rise { animation: rise 200ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* A block that moved gets a brief accent wash, so a re-plan is legible as a
+   change rather than appearing to have always been that way. */
+@keyframes settle {
+  0%   { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.settle { animation: settle 900ms ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

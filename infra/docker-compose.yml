@@ -1,0 +1,102 @@
+# Horolog — full self-hosted stack.
+#
+#   docker compose -f infra/docker-compose.yml up
+#   → http://localhost:3000
+#
+# Four services and no more. Everything the scheduler needs is a table in
+# Postgres; there is no queue, no vector store and no separate worker, because
+# a re-plan takes single-digit milliseconds and runs inline with the request
+# that caused it.
+#
+# To run without Postgres, delete the `db` service and set
+#   HOROLOG_DATABASE_URL=sqlite+aiosqlite:///./data/horolog.db
+
+name: horolog
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: horolog
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-horolog}
+      POSTGRES_DB: horolog
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # The API waits on this rather than sleeping: a container that is "up"
+      # is not the same as a database that accepts connections.
+      test: ["CMD-SHELL", "pg_isready -U horolog -d horolog"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-models:/root/.ollama
+    ports:
+      - "127.0.0.1:11434:11434"
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+    # Uncomment for GPU. CPU is fine — the model runs once per captured
+    # sentence, not once per re-plan.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{ driver: nvidia, count: 1, capabilities: [gpu] }]
+
+  # Pulls the model once, then exits. Separated from `ollama` so the server
+  # image stays stock and a re-pull never restarts the server.
+  ollama-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama: { condition: service_healthy }
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["sh", "-c", "ollama pull ${HOROLOG_LLM_MODEL:-qwen3:8b}"]
+    restart: "no"
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      HOROLOG_DATABASE_URL: postgresql+asyncpg://horolog:${POSTGRES_PASSWORD:-horolog}@db:5432/horolog
+      HOROLOG_LLM_PROVIDER: ${HOROLOG_LLM_PROVIDER:-openai}
+      HOROLOG_LLM_BASE_URL: ${HOROLOG_LLM_BASE_URL:-http://ollama:11434/v1}
+      HOROLOG_LLM_MODEL: ${HOROLOG_LLM_MODEL:-qwen3:8b}
+      HOROLOG_LLM_API_KEY: ${HOROLOG_LLM_API_KEY:-}
+      HOROLOG_TIMEZONE: ${HOROLOG_TIMEZONE:-UTC}
+      HOROLOG_HORIZON_DAYS: ${HOROLOG_HORIZON_DAYS:-21}
+      HOROLOG_CORS_ORIGINS: '["http://localhost:3000"]'
+    volumes:
+      - api-data:/app/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+    depends_on:
+      api: { condition: service_healthy }
+    environment:
+      # Server-side rewrite target. The browser only ever talks to the web
+      # origin, so there is no CORS and SSE needs no preflight.
+      HOROLOG_API_URL: http://api:8000
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  api-data:
+  ollama-models:

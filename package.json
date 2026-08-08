@@ -1,0 +1,19 @@
+{
+  "name": "horolog",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open-source, self-hosted AI calendar that defends your time.",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:api": "cd services/api && .venv/bin/python -m uvicorn horolog.api:app --reload --port ${HOROLOG_PORT:-8000}",
+    "dev:web": "cd apps/web && npm run dev",
+    "setup": "node scripts/setup.mjs",
+    "test": "cd services/api && .venv/bin/python -m pytest -q",
+    "bench": "cd services/api && .venv/bin/python -m horolog.bench",
+    "check": "npm run check:api && npm run check:web",
+    "check:api": "cd services/api && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy horolog && .venv/bin/python -m pytest -q",
+    "check:web": "cd apps/web && npm run typecheck && npm run build",
+    "clean": "rm -rf apps/web/.next services/api/.venv services/api/*.db"
+  }
+}

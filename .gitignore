@@ -1,0 +1,25 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.db
+data/
+
+# Node
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# Local
+.env
+.DS_Store
+/tmp/
+shot.mjs
+*.tsbuildinfo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

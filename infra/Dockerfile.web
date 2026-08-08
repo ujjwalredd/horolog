@@ -1,0 +1,34 @@
+# ---- deps ----------------------------------------------------------------
+FROM node:20-alpine AS deps
+WORKDIR /app
+COPY apps/web/package.json apps/web/package-lock.json* ./
+RUN npm ci --omit=dev --ignore-scripts || npm install --omit=dev --ignore-scripts
+
+# ---- builder -------------------------------------------------------------
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY apps/web/package.json apps/web/package-lock.json* ./
+RUN npm ci --ignore-scripts || npm install --ignore-scripts
+COPY apps/web ./
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npm run build
+
+# ---- runtime -------------------------------------------------------------
+FROM node:20-alpine
+WORKDIR /app
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
+
+RUN addgroup -g 10001 nodejs && adduser -u 10001 -G nodejs -S nextjs
+
+COPY --from=deps    --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/.next        ./.next
+COPY --from=builder --chown=nextjs:nodejs /app/package.json ./
+COPY --from=builder --chown=nextjs:nodejs /app/next.config.ts ./
+
+USER nextjs
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:3000/ >/dev/null || exit 1
+
+CMD ["npm", "run", "start"]

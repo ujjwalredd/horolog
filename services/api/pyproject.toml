@@ -1,0 +1,70 @@
+[project]
+name = "horolog"
+version = "0.1.0"
+description = "Open-source, self-hostable AI calendar auto-scheduler"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlalchemy[asyncio]>=2.0",
+    "greenlet>=3.0",
+    "aiosqlite>=0.20",
+    "sse-starlette>=2.1",
+    "httpx>=0.27",
+    "icalendar>=6.0",
+    "caldav>=1.3",
+    "recurring-ical-events>=3.0",
+]
+
+[project.optional-dependencies]
+postgres = ["asyncpg>=0.30"]
+anthropic = ["anthropic>=0.40"]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "mypy>=1.13",
+    "ruff>=0.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["horolog"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+
+# These ship no type information. Declaring them here keeps `strict` fully on
+# for our own modules instead of blanket-disabling a rule.
+[[tool.mypy.overrides]]
+module = ["recurring_ical_events.*", "icalendar.*", "caldav.*", "anthropic.*"]
+ignore_missing_imports = true
+# Installed but shipping no `py.typed`, so mypy infers `object` for their
+# attributes and every call through them is an error. Skipping the follow makes
+# them opaque `Any`, which is the honest description of an untyped dependency.
+follow_imports = "skip"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "RUF", "SIM", "C4"]
+
+[tool.ruff.lint.flake8-bugbear]
+# `Depends(...)` in a default is FastAPI's documented dependency-injection
+# syntax, not the mutable-default bug B008 is looking for.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests set HOROLOG_DATABASE_URL before importing the app, so those imports
+# genuinely cannot move to the top of the file.
+"tests/*" = ["E402"]

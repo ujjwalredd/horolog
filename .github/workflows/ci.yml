@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: uv pip install --system -e ".[dev]"
+
+      - name: Lint
+        run: ruff check . && ruff format --check .
+
+      - name: Types
+        run: mypy horolog
+
+      - name: Tests
+        # The scheduling engine has no I/O, so its properties are checked
+        # directly. The whole suite is about a second — there is no reason to
+        # split it out or run it nightly.
+        run: pytest -q
+
+      - name: Benchmark
+        # Not a pass/fail gate — printed into the job log so a placement change
+        # that quietly costs 10x shows up in the diff of two CI runs.
+        run: python -m horolog.bench
+
+      - name: Env example covers every setting
+        # A setting that exists in code but not in .env.example is a setting
+        # nobody self-hosting will ever discover.
+        run: |
+          python - <<'PY'
+          import pathlib, re
+          from horolog.settings import Settings
+          example = pathlib.Path("../../.env.example").read_text()
+          documented = set(re.findall(r"HOROLOG_([A-Z0-9_]+)", example))
+          missing = sorted(
+              name for name in Settings.model_fields
+              if name.upper() not in documented
+          )
+          assert not missing, f"undocumented settings: {missing}"
+          print(f"all {len(Settings.model_fields)} settings documented")
+          PY
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - run: npm ci || npm install
+      - run: npm run typecheck
+      - run: npm run build
+
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Build only — proves the Dockerfiles work on every PR without needing
+      # a registry credential.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/Dockerfile.api
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/Dockerfile.web
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
