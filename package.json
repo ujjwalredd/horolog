@@ -4,6 +4,24 @@
   "private": true,
   "description": "Open-source, self-hosted AI calendar that defends your time.",
   "license": "AGPL-3.0-or-later",
+  "homepage": "https://github.com/ujjwalredd/horolog#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ujjwalredd/horolog.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ujjwalredd/horolog/issues"
+  },
+  "keywords": [
+    "calendar",
+    "ai",
+    "auto-scheduler",
+    "reclaim-alternative",
+    "self-hosted",
+    "productivity",
+    "focus-time",
+    "time-management"
+  ],
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:api": "cd services/api && .venv/bin/python -m uvicorn horolog.api:app --reload --port ${HOROLOG_PORT:-8000}",
@@ -17,3 +35,4 @@
     "clean": "rm -rf apps/web/.next services/api/.venv services/api/*.db"
   }
 }
+

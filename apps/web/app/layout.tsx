@@ -2,8 +2,28 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Horolog",
-  description: "Open-source AI calendar that defends your time.",
+  title: {
+    default: "Horolog — Defend Your Focus Time",
+    template: "%s | Horolog",
+  },
+  description: "An open-source, self-hosted AI calendar auto-scheduler that defends your focus time, habits, and tasks.",
+  keywords: [
+    "calendar",
+    "auto-scheduler",
+    "ai calendar",
+    "reclaim alternative",
+    "focus time",
+    "time blocking",
+    "productivity",
+    "self-hosted",
+  ],
+  authors: [{ name: "Horolog Contributors" }],
+  openGraph: {
+    title: "Horolog — Defend Your Focus Time",
+    description: "An open-source, self-hosted AI calendar that defends your time.",
+    type: "website",
+    siteName: "Horolog",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

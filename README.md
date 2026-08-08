@@ -1,5 +1,10 @@
 # Horolog
 
+[![AGPL-3.0 License](https://img.shields.io/badge/License-AGPL_3.0-blue.svg)](LICENSE)
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB.svg?logo=python&logoColor=white)](services/api/pyproject.toml)
+[![Next.js 15](https://img.shields.io/badge/Next.js-15-000000.svg?logo=next.js&logoColor=white)](apps/web/package.json)
+[![CI Status](https://img.shields.io/github/actions/workflow/status/ujjwalredd/horolog/ci.yml?branch=main&label=CI)](.github/workflows/ci.yml)
+
 **An open-source, self-hosted AI calendar that defends your time.**
 
 Horolog places focus time, habits and tasks around the meetings you actually
@@ -213,19 +218,26 @@ infra/          docker-compose + Dockerfiles
 
 ## Contributing
 
+We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before submitting pull requests.
+
 The engine is the product; everything else is I/O around it. If you change
 anything under `solver/`, the property tests in
-`services/api/tests/test_solver.py` are the contract — they encode behaviour
+[`services/api/tests/test_solver.py`](services/api/tests/test_solver.py) are the contract — they encode behaviour
 (no overlap, bounded churn, honest shortfall) rather than implementation, so a
 better algorithm should keep them all passing.
 
 Run `python -m horolog.bench` before and after any placement change and put the
 numbers in the PR.
 
+## Security
+
+Please see our [Security Policy](SECURITY.md) for vulnerability reporting guidelines.
+
 ## Licence
 
-AGPL-3.0. If you run a modified version as a network service, publish your
+[AGPL-3.0-or-later](LICENSE). If you run a modified version as a network service, publish your
 changes.
 
 **Not affiliated with Reclaim.ai or Dropbox.** "Reclaim.ai" is referenced only
 to describe the category this project reimplements.
+

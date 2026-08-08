@@ -2,6 +2,12 @@
   "name": "@horolog/web",
   "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0-or-later",
+  "homepage": "https://github.com/ujjwalredd/horolog#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ujjwalredd/horolog.git"
+  },
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
