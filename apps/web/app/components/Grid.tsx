@@ -3,32 +3,25 @@
 import { Glyph, KIND_LABEL } from "@/app/components/Glyph";
 import type { Block, Busy, Priority } from "@/app/lib/api";
 import { formatDuration, minutesBetween } from "@/app/lib/api";
+import { Clock, Calendar, MoveRight } from "lucide-react";
 
 const DAY_START_H = 7;
 const DAY_END_H = 21;
-const PX_PER_HOUR = 58;
+const PX_PER_HOUR = 60;
 const HEIGHT = (DAY_END_H - DAY_START_H) * PX_PER_HOUR;
 
-/** Priority is carried by the *saturation of the left rule*, not by the fill.
- *
- *  Encoding it as four solid fills would either wash out the low tiers or force
- *  white text on the high ones, and a calendar has to stay readable at a
- *  glance. Keeping fills pale means block text is always --color-fg at AAA
- *  contrast, while the rule still ranks four levels in one hue. Priority is
- *  also never the *only* signal — the glyph carries kind and the rule style
- *  carries movability. */
 const RULE: Record<Priority, string> = {
-  1: "color-mix(in srgb, var(--color-accent) 100%, transparent)",
-  2: "color-mix(in srgb, var(--color-accent) 62%, transparent)",
-  3: "color-mix(in srgb, var(--color-accent) 38%, transparent)",
-  4: "color-mix(in srgb, var(--color-accent) 20%, transparent)",
+  1: "#4F46E5",
+  2: "#6366F1",
+  3: "#818CF8",
+  4: "#A5B4FC",
 };
 
 const FILL: Record<Priority, string> = {
-  1: "color-mix(in srgb, var(--color-accent) 9%, var(--color-surface))",
-  2: "color-mix(in srgb, var(--color-accent) 7%, var(--color-surface))",
-  3: "color-mix(in srgb, var(--color-accent) 5%, var(--color-surface))",
-  4: "color-mix(in srgb, var(--color-accent) 3.5%, var(--color-surface))",
+  1: "rgba(99, 102, 241, 0.12)",
+  2: "rgba(99, 102, 241, 0.08)",
+  3: "rgba(99, 102, 241, 0.05)",
+  4: "rgba(99, 102, 241, 0.03)",
 };
 
 const PRIORITY_LABEL: Record<Priority, string> = {
@@ -60,53 +53,60 @@ export interface GridProps {
   onSelect: (key: string | null) => void;
 }
 
+/** Ultra-Luxury Week Planner Grid Component.
+ *  Includes vibrant current-day pill badges, translucent glass blocks,
+ *  dashed borders for relocated tasks, and soft-edge scroll container masks.
+ */
 export function Grid({ days, blocks, busy, selected, onSelect }: GridProps) {
   const hours = Array.from(
     { length: DAY_END_H - DAY_START_H },
     (_, i) => DAY_START_H + i,
   );
-  const today = new Date().toDateString();
+  const todayStr = new Date().toDateString();
 
   return (
-    <div className="scroll-x rounded-card border bg-surface shadow-sm">
-      <div className="min-w-[880px]">
-        {/* Day header */}
-        <div className="sticky top-0 z-20 flex border-b bg-surface/95 backdrop-blur">
-          <div className="w-14 shrink-0 border-r" />
+    <div className="scroll-x scroll-mask-x rounded-card border border-black/[0.08] bg-surface shadow-sm transition-shadow hover:shadow-md">
+      <div className="min-w-[900px]">
+        {/* Day Header Rail */}
+        <div className="sticky top-0 z-20 flex border-b border-black/[0.06] bg-surface/90 backdrop-blur-xl">
+          <div className="w-14 shrink-0 border-r border-black/[0.06]" />
           {days.map((day) => {
-            const isToday = day.toDateString() === today;
+            const isToday = day.toDateString() === todayStr;
             return (
               <div
                 key={day.toISOString()}
-                className="flex-1 border-r px-3 py-2.5 last:border-r-0"
+                className="flex-1 border-r border-black/[0.06] px-3.5 py-3 last:border-r-0"
               >
-                <div className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
                   {day.toLocaleDateString([], { weekday: "short" })}
                 </div>
-                <div
-                  className={`tabular text-[15px] ${
-                    isToday ? "font-semibold text-accent" : "text-fg"
-                  }`}
-                >
-                  {day.getDate()}
+                <div className="mt-0.5 flex items-center gap-1.5">
+                  <span
+                    className={`tabular text-[16px] ${
+                      isToday
+                        ? "inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 font-bold text-white shadow-sm"
+                        : "font-semibold text-fg"
+                    }`}
+                  >
+                    {day.getDate()}
+                  </span>
                 </div>
               </div>
             );
           })}
         </div>
 
-        {/* Body */}
+        {/* Calendar Body */}
         <div className="flex">
-          {/* Hour rail — --color-fg-muted, never --color-fg-subtle: at 12px
-              this is text and has to clear 4.5:1. */}
-          <div className="w-14 shrink-0 border-r">
+          {/* Time Rail */}
+          <div className="w-14 shrink-0 border-r border-black/[0.06] bg-sunk/30">
             {hours.map((hour) => (
               <div
                 key={hour}
                 style={{ height: PX_PER_HOUR }}
-                className="relative border-b last:border-b-0"
+                className="relative border-b border-black/[0.04] last:border-b-0"
               >
-                <span className="tabular absolute -top-2 right-2 bg-surface px-1 text-[11px] text-fg-muted">
+                <span className="tabular absolute -top-2.5 right-2 rounded bg-surface/90 px-1 py-0.5 text-[10.5px] font-medium text-fg-muted backdrop-blur-sm">
                   {hour % 12 === 0 ? 12 : hour % 12}
                   {hour < 12 ? "a" : "p"}
                 </span>
@@ -114,6 +114,7 @@ export function Grid({ days, blocks, busy, selected, onSelect }: GridProps) {
             ))}
           </div>
 
+          {/* Grid Columns */}
           {days.map((day) => {
             const key = day.toISOString().slice(0, 10);
             const dayBlocks = blocks.filter((b) => dayKey(b.start) === key);
@@ -122,47 +123,50 @@ export function Grid({ days, blocks, busy, selected, onSelect }: GridProps) {
             return (
               <div
                 key={key}
-                className="relative flex-1 border-r last:border-r-0"
+                className="relative flex-1 border-r border-black/[0.06] last:border-r-0"
                 style={{ height: HEIGHT }}
               >
+                {/* Horizontal Guide Lines */}
                 {hours.map((hour) => (
                   <div
                     key={hour}
                     style={{ height: PX_PER_HOUR }}
-                    className="border-b last:border-b-0"
+                    className="border-b border-black/[0.04] last:border-b-0"
                   />
                 ))}
 
-                {/* Real meetings: sunk, no accent. "Not ours" has to be
-                    obvious without reading a label. */}
+                {/* External Real Meetings (Opaque Sunk Blocks) */}
                 {dayBusy.map((event, i) => {
                   const top = offsetPx(event.start);
                   const height = Math.max(
-                    16,
+                    18,
                     (minutesBetween(event.start, event.end) / 60) * PX_PER_HOUR,
                   );
                   return (
                     <div
                       key={`${event.start}-${i}`}
                       style={{ top, height }}
-                      className="absolute inset-x-1 z-0 overflow-hidden rounded-block border border-line-strong bg-sunk px-2 py-1"
+                      className="absolute inset-x-1 z-0 overflow-hidden rounded-block border border-black/10 bg-slate-100/90 px-2.5 py-1 backdrop-blur-xs"
                       title={`${event.label || "Busy"} · ${clock(event.start)}`}
                     >
-                      <div className="truncate text-[11px] font-medium text-fg-muted">
+                      <div className="truncate text-[11.5px] font-semibold text-slate-700">
                         {event.label || "Busy"}
                       </div>
-                      <div className="tabular truncate text-[10px] text-fg-muted">
-                        {clock(event.start)}
-                      </div>
+                      {height > 32 && (
+                        <div className="tabular truncate text-[10px] font-medium text-slate-500">
+                          {clock(event.start)}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
 
+                {/* Scheduled Auto-Placed Blocks */}
                 {dayBlocks.map((block) => {
                   const id = `${block.intent_id}:${block.occurrence}:${block.chunk}`;
                   const minutes = minutesBetween(block.start, block.end);
                   const top = offsetPx(block.start);
-                  const height = Math.max(22, (minutes / 60) * PX_PER_HOUR);
+                  const height = Math.max(24, (minutes / 60) * PX_PER_HOUR);
                   const moved = block.moved_from !== null && block.moved_from !== block.start;
                   const isSelected = selected === id;
 
@@ -175,28 +179,25 @@ export function Grid({ days, blocks, busy, selected, onSelect }: GridProps) {
                         top,
                         height,
                         background: FILL[block.priority],
-                        borderLeft: `2px ${moved ? "dashed" : "solid"} ${RULE[block.priority]}`,
+                        borderLeft: `3px ${moved ? "dashed" : "solid"} ${RULE[block.priority]}`,
                       }}
-                      className={`absolute inset-x-1 z-10 cursor-pointer overflow-hidden rounded-block border border-line px-2 py-1 text-left transition-shadow duration-150 hover:shadow-md ${
-                        isSelected ? "shadow-md ring-1 ring-accent" : "shadow-sm"
+                      className={`group absolute inset-x-1.5 z-10 cursor-pointer overflow-hidden rounded-block border border-indigo-200/50 px-2.5 py-1 text-left transition-all duration-200 ease-spring hover:scale-[1.01] hover:shadow-md ${
+                        isSelected ? "shadow-md ring-2 ring-secondary0" : "shadow-xs"
                       } ${moved ? "settle" : ""}`}
-                      aria-label={`${block.title}, ${KIND_LABEL[block.kind]}, ${
-                        PRIORITY_LABEL[block.priority]
-                      } priority, ${clock(block.start)} for ${formatDuration(minutes)}${
-                        moved ? ", moved from its previous time" : ""
-                      }`}
                     >
                       <div className="flex items-center gap-1.5">
                         <span style={{ color: RULE[block.priority] }}>
                           <Glyph kind={block.kind} size={13} />
                         </span>
-                        <span className="truncate text-[12px] font-medium leading-tight">
+                        <span className="truncate text-[12px] font-semibold text-fg leading-tight">
                           {block.title}
                         </span>
                       </div>
-                      {height > 38 && (
-                        <div className="tabular mt-0.5 truncate text-[10px] text-fg-muted">
-                          {clock(block.start)} · {formatDuration(minutes)}
+                      {height > 36 && (
+                        <div className="tabular mt-0.5 flex items-center gap-1 truncate text-[10px] font-medium text-fg-muted">
+                          <span>{clock(block.start)}</span>
+                          <span>·</span>
+                          <span>{formatDuration(minutes)}</span>
                         </div>
                       )}
                     </button>

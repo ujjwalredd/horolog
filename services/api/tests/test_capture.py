@@ -28,7 +28,7 @@ class ScriptedProvider:
         self.prompts: list[str] = []
         self.schemas: list[dict[str, Any]] = []
 
-    async def complete(self, system: str, user: str, schema: dict, name: str) -> str:
+    async def complete(self, system: str, user: str, schema: dict[str, Any], name: str) -> str:
         self.prompts.append(user)
         self.schemas.append(schema)
         return json.dumps(self._payloads.pop(0))

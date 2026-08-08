@@ -11,7 +11,7 @@ import { useScrollProgress } from "@/app/components/Reveal";
  *  real behaviour: a meeting lands on Wednesday, the two blocks it collides
  *  with move, and every other block is pinned to the pixel.
  *
- *  The numbers are a fixed demo fixture, not a live solve — but the behaviour
+ *  The numbers are a fixed demo fixture, not a live solve - but the behaviour
  *  is the same invariant the engine is tested against
  *  (`test_a_new_meeting_disturbs_only_its_neighbourhood`).
  */
@@ -80,7 +80,7 @@ export function StabilityDemo() {
             <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-fg-muted">
               Most AI calendars re-plan your whole week whenever anything changes, so
               you stop trusting what you see. Horolog treats stability as something to
-              optimise for — the schedule you looked at this morning is still the
+              optimise for - the schedule you looked at this morning is still the
               schedule at lunch.
             </p>
           </div>

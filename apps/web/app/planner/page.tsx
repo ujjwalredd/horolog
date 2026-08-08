@@ -5,6 +5,7 @@ import { Glyph, KIND_LABEL } from "@/app/components/Glyph";
 import { Grid, PRIORITY_LABEL, RULE } from "@/app/components/Grid";
 import { Shell } from "@/app/components/Shell";
 import { api, formatDuration, minutesBetween, type Plan } from "@/app/lib/api";
+import { ChevronLeft, ChevronRight, Download, AlertTriangle, Info, Sparkles } from "lucide-react";
 
 const VISIBLE_DAYS = 7;
 
@@ -50,161 +51,174 @@ export default function Planner() {
 
   return (
     <Shell onPlanChange={load}>
-    <main className="mx-auto max-w-[1240px] px-6 py-8">
-      <header className="mb-7 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-[26px] font-semibold">Planner</h1>
-          <p className="mt-0.5 text-[13px] text-fg-muted">
-            {plan
-              ? `${plan.blocks.length} blocks · ${formatDuration(scheduledMinutes)} scheduled · planned in ${plan.solve_ms.toFixed(0)}ms`
-              : "Loading…"}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="flex items-center rounded-md border bg-surface shadow-sm">
-            <button
-              type="button"
-              onClick={() => setWeekOffset((w) => w - 1)}
-              className="h-9 w-9 text-fg-muted transition-colors duration-150 hover:bg-sunk hover:text-fg"
-              aria-label="Previous week"
-            >
-              ‹
-            </button>
-            <button
-              type="button"
-              onClick={() => setWeekOffset(0)}
-              disabled={weekOffset === 0}
-              className="h-9 border-x px-3 text-[13px] transition-colors duration-150 hover:bg-sunk disabled:text-fg-muted"
-            >
-              Today
-            </button>
-            <button
-              type="button"
-              onClick={() => setWeekOffset((w) => w + 1)}
-              className="h-9 w-9 text-fg-muted transition-colors duration-150 hover:bg-sunk hover:text-fg"
-              aria-label="Next week"
-            >
-              ›
-            </button>
+      <main className="mx-auto max-w-[1280px] px-6 py-8">
+        {/* Header Bar */}
+        <header className="mb-7 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-[28px] font-bold text-fg">Planner</h1>
+            <p className="mt-1 text-[13.5px] text-fg-muted">
+              {plan ? (
+                <span className="inline-flex items-center gap-2">
+                  <span className="font-semibold text-fg">{plan.blocks.length} blocks</span>
+                  <span>·</span>
+                  <span>{formatDuration(scheduledMinutes)} scheduled</span>
+                  <span>·</span>
+                  <span className="tabular text-accent font-medium">solved in {plan.solve_ms.toFixed(1)}ms</span>
+                </span>
+              ) : (
+                "Loading schedule..."
+              )}
+            </p>
           </div>
 
-          <a
-            href="/api/plan.ics"
-            className="flex h-9 items-center rounded-md border bg-surface px-3.5 text-[13px] font-medium shadow-sm transition-colors duration-150 hover:bg-sunk"
-          >
-            Export
-          </a>
-        </div>
-      </header>
+          {/* Actions & Segmented Control */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center rounded-xl border border-black/[0.08] bg-surface p-1 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setWeekOffset((w) => w - 1)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-sunk hover:text-fg"
+                aria-label="Previous week"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setWeekOffset(0)}
+                disabled={weekOffset === 0}
+                className="h-8 rounded-lg px-3 text-[13px] font-medium transition-colors hover:bg-sunk disabled:text-fg-subtle"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => setWeekOffset((w) => w + 1)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-sunk hover:text-fg"
+                aria-label="Next week"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
 
-      {error && (
-        <div className="mb-5 rounded-card border border-danger/30 bg-danger/5 px-4 py-3">
-          <p className="text-[13px] text-danger">{error}</p>
-          <p className="mt-1 text-[12px] text-fg-muted">
-            Check that the API is running on port 8000, then reload.
-          </p>
-        </div>
-      )}
+            <a
+              href="/api/plan.ics"
+              className="inline-flex h-9.5 items-center gap-1.5 rounded-xl border border-black/[0.08] bg-surface px-4 text-[13px] font-semibold text-fg shadow-sm transition-all duration-150 hover:bg-sunk hover:shadow-md"
+            >
+              <Download size={14} className="text-fg-muted" />
+              Export .ics
+            </a>
+          </div>
+        </header>
 
-      <div className="grid gap-5 lg:grid-cols-[1fr_268px]">
-        <section id="planner" aria-label="Week grid">
-          <Grid
-            days={days}
-            blocks={plan?.blocks ?? []}
-            busy={plan?.busy ?? []}
-            selected={selected}
-            onSelect={setSelected}
-          />
-        </section>
+        {error && (
+          <div className="mb-6 rounded-card border border-red-200/80 bg-red-50/60 p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-[13.5px] font-semibold text-danger">
+              <AlertTriangle size={16} />
+              <span>{error}</span>
+            </div>
+            <p className="mt-1 text-[12.5px] text-fg-muted">
+              Ensure the backend API is running on port 8000.
+            </p>
+          </div>
+        )}
 
-        <aside className="space-y-4">
-          {movedCount > 0 && (
-            <Panel title="Moved this replan">
-              <p className="text-[13px] text-fg-muted">
-                {movedCount} {movedCount === 1 ? "block" : "blocks"} shifted. Everything
-                else stayed exactly where it was.
-              </p>
-            </Panel>
-          )}
+        <div className="grid gap-6 lg:grid-cols-[1fr_270px]">
+          {/* Main Grid */}
+          <section id="planner" aria-label="Week grid">
+            <Grid
+              days={days}
+              blocks={plan?.blocks ?? []}
+              busy={plan?.busy ?? []}
+              selected={selected}
+              onSelect={setSelected}
+            />
+          </section>
 
-          {plan && !plan.complete && (
-            <Panel title="Did not fit">
+          {/* Right Sidebar Info Cards */}
+          <aside className="space-y-4">
+            {movedCount > 0 && (
+              <Panel title="Shift Stability">
+                <div className="flex items-start gap-2.5">
+                  <Sparkles size={16} className="mt-0.5 shrink-0 text-accent" />
+                  <p className="text-[13px] leading-relaxed text-fg-muted">
+                    <span className="font-semibold text-fg">{movedCount} {movedCount === 1 ? "block" : "blocks"}</span> shifted to fit new commitments. All other tasks remained untouched.
+                  </p>
+                </div>
+              </Panel>
+            )}
+
+            {plan && !plan.complete && (
+              <Panel title="Unmet Demand">
+                <ul className="space-y-3">
+                  {plan.unmet.map((item) => (
+                    <li key={`${item.intent_id}-${item.title}`} className="flex gap-2.5">
+                      <span
+                        className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+                        style={{ background: RULE[item.priority] }}
+                        aria-hidden
+                      />
+                      <div className="min-w-0">
+                        <span className="block truncate text-[13px] font-semibold text-fg">{item.title}</span>
+                        <span className="tabular text-[11.5px] text-danger font-medium">
+                          {formatDuration(item.shortfall_minutes)} short · {PRIORITY_LABEL[item.priority]}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-3.5 border-t border-black/[0.06] pt-3 text-[12px] text-fg-muted">
+                  Widen daily windows or lower priority to fit remaining demand.
+                </p>
+              </Panel>
+            )}
+
+            <Panel title="Legend">
               <ul className="space-y-2.5">
-                {plan.unmet.map((item) => (
-                  <li key={`${item.intent_id}-${item.title}`} className="flex gap-2">
-                    <span
-                      className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full"
-                      style={{ background: RULE[item.priority] }}
-                      aria-hidden
-                    />
-                    <span className="min-w-0">
-                      <span className="block truncate text-[13px]">{item.title}</span>
-                      <span className="tabular text-[11px] text-fg-muted">
-                        {formatDuration(item.shortfall_minutes)} short ·{" "}
-                        {PRIORITY_LABEL[item.priority]}
-                      </span>
+                {(["task", "habit", "focus", "buffer", "meeting"] as const).map((kind) => (
+                  <li key={kind} className="flex items-center gap-2.5 text-[13px] text-fg font-medium">
+                    <span className="text-accent">
+                      <Glyph kind={kind} size={15} />
                     </span>
+                    {KIND_LABEL[kind]}
                   </li>
                 ))}
               </ul>
-              <p className="mt-3 border-t pt-3 text-[12px] text-fg-muted">
-                Your week is over-subscribed. Drop something, or widen a window.
-              </p>
-            </Panel>
-          )}
-
-          <Panel title="Legend">
-            <ul className="space-y-2">
-              {(["task", "habit", "focus", "buffer", "meeting"] as const).map((kind) => (
-                <li key={kind} className="flex items-center gap-2 text-[13px] text-fg-muted">
-                  <span className="text-fg-subtle">
-                    <Glyph kind={kind} size={14} />
-                  </span>
-                  {KIND_LABEL[kind]}
-                </li>
-              ))}
-            </ul>
-            <div className="mt-3 space-y-2 border-t pt-3">
-              {([1, 2, 3, 4] as const).map((priority) => (
-                <div key={priority} className="flex items-center gap-2 text-[12px] text-fg-muted">
+              <div className="mt-4 space-y-2.5 border-t border-black/[0.06] pt-3.5">
+                {([1, 2, 3, 4] as const).map((priority) => (
+                  <div key={priority} className="flex items-center gap-2.5 text-[12.5px] text-fg-muted font-medium">
+                    <span
+                      className="h-3.5 w-1 rounded-full"
+                      style={{ background: RULE[priority] }}
+                      aria-hidden
+                    />
+                    {PRIORITY_LABEL[priority]} Priority
+                  </div>
+                ))}
+                <div className="flex items-center gap-2.5 pt-1 text-[12px] text-fg-muted">
                   <span
-                    className="h-3.5 w-[3px] rounded-sm"
-                    style={{ background: RULE[priority] }}
+                    className="h-3.5 border-l-2 border-dashed"
+                    style={{ borderColor: RULE[3] }}
                     aria-hidden
                   />
-                  {PRIORITY_LABEL[priority]}
+                  Moved block
                 </div>
-              ))}
-              <div className="flex items-center gap-2 pt-1 text-[12px] text-fg-muted">
-                <span
-                  className="h-3.5 border-l-2 border-dashed"
-                  style={{ borderColor: RULE[3] }}
-                  aria-hidden
-                />
-                Moved since last plan
+                <div className="flex items-center gap-2.5 text-[12px] text-fg-muted">
+                  <span className="h-3.5 w-1 rounded-full bg-slate-300" aria-hidden />
+                  Real calendar meeting
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-[12px] text-fg-muted">
-                <span
-                  className="h-3.5 w-[3px] rounded-sm bg-line-strong"
-                  aria-hidden
-                />
-                Your real meetings — never moved
-              </div>
-            </div>
-          </Panel>
-        </aside>
-      </div>
-
-    </main>
+            </Panel>
+          </aside>
+        </div>
+      </main>
     </Shell>
   );
 }
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-card border bg-surface p-4 shadow-sm">
-      <h2 className="mb-3 text-[11px] font-medium uppercase tracking-wide text-fg-muted">
+    <div className="rounded-card border border-black/[0.06] bg-surface p-4.5 shadow-sm">
+      <h2 className="mb-3 text-[11px] font-semibold tracking-wider uppercase text-fg-muted">
         {title}
       </h2>
       {children}

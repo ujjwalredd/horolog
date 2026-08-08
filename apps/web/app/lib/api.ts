@@ -1,4 +1,4 @@
-/** Wire types — mirror of the Pydantic models in `horolog/api.py`.
+/** Wire types - mirror of the Pydantic models in `horolog/api.py`.
  *
  *  Hand-written for now. Once the API is stable these should be generated from
  *  its OpenAPI schema (`openapi-typescript`) so the two cannot drift; until
@@ -63,7 +63,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     // The API puts a human-readable reason in `detail` for every 4xx it raises
-    // deliberately — surface that rather than a bare status code.
+    // deliberately - surface that rather than a bare status code.
     let detail = `${response.status} ${response.statusText}`;
     try {
       const body = (await response.json()) as { detail?: string };
@@ -164,7 +164,7 @@ export const PRIORITY_NAME: Record<Priority, string> = {
   4: "Low",
 };
 
-/** Accent tint per priority — one hue, four weights. Shared by every view so
+/** Accent tint per priority - one hue, four weights. Shared by every view so
  *  the same block reads the same way on the grid, in the inbox, and in a chart. */
 export const PRIORITY_TINT: Record<Priority, string> = {
   1: "color-mix(in srgb, var(--color-accent) 100%, transparent)",

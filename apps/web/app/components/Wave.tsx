@@ -7,7 +7,7 @@ import { useEffect, useRef } from "react";
  *  Canvas rather than an animated SVG or a stack of CSS gradients: this draws
  *  ~40 stacked sine bands every frame, which CSS cannot express and SVG filters
  *  render far more expensively. It stays cheap by drawing at a fixed low
- *  resolution and letting the browser scale it up — the shapes are soft enough
+ *  resolution and letting the browser scale it up - the shapes are soft enough
  *  that nobody can tell, and the fill rate drops by ~10x.
  *
  *  Motion is slow on purpose (one full period is ~40 seconds). A hero that

@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "Horolog — Defend Your Focus Time",
+    default: "Horolog - Defend Your Focus Time",
     template: "%s | Horolog",
   },
   description: "An open-source, self-hosted AI calendar auto-scheduler that defends your focus time, habits, and tasks.",
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "Horolog Contributors" }],
   openGraph: {
-    title: "Horolog — Defend Your Focus Time",
+    title: "Horolog - Defend Your Focus Time",
     description: "An open-source, self-hosted AI calendar that defends your time.",
     type: "website",
     siteName: "Horolog",
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         {/* Self-host these for an air-gapped deploy; the CSS falls back to the
             system stack, so a blocked CDN degrades rather than breaks. */}

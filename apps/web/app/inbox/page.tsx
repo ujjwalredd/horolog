@@ -13,13 +13,10 @@ import {
   type Plan,
   type Priority,
 } from "@/app/lib/api";
+import { Trash2, AlertCircle, Clock, CheckCircle, Sparkles } from "lucide-react";
 
-/** Task inbox: every intent, and where the scheduler actually put it.
- *
- *  Deliberately not a plain to-do list. The one question a scheduling product
- *  has to answer that a to-do app cannot is "when is this happening" — so each
- *  row leads with its placement, and anything that did not fit is called out
- *  rather than left looking identical to work that did.
+/** Ultra-Luxury Task Inbox View for Horolog.
+ *  Displays all scheduling intents, their placed time progress bars, and unmet demand callouts.
  */
 export default function Inbox() {
   const [intents, setIntents] = useState<Intent[]>([]);
@@ -50,16 +47,18 @@ export default function Inbox() {
         const mine = blocks
           .filter((b) => b.intent_id === intent.id)
           .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
+        const scheduled = mine.reduce((sum, b) => sum + minutesBetween(b.start, b.end), 0);
         return {
           intent,
           blocks: mine,
-          scheduled: mine.reduce((sum, b) => sum + minutesBetween(b.start, b.end), 0),
+          scheduled,
           short: shortfall.get(intent.id) ?? 0,
           next: mine[0] ?? null,
+          percent: Math.min(100, Math.round((scheduled / intent.minutes_per_period) * 100)),
         };
       })
       .sort((a, b) => {
-        if (a.short !== b.short) return b.short - a.short; // unmet first
+        if (a.short !== b.short) return b.short - a.short;
         if (a.intent.priority !== b.intent.priority) return a.intent.priority - b.intent.priority;
         return (a.next ? Date.parse(a.next.start) : Infinity) -
           (b.next ? Date.parse(b.next.start) : Infinity);
@@ -80,99 +79,115 @@ export default function Inbox() {
 
   return (
     <Shell onPlanChange={load}>
-      <main className="mx-auto max-w-[900px] px-6 py-8">
-        <header className="mb-7">
-          <h1 className="text-[26px] font-semibold tracking-tight-optical">Task inbox</h1>
-          <p className="mt-0.5 text-[13px] text-fg-muted">
-            {rows.length} {rows.length === 1 ? "intent" : "intents"} ·{" "}
-            {formatDuration(rows.reduce((s, r) => s + r.scheduled, 0))} scheduled
-            {plan && !plan.complete && (
-              <span className="text-danger"> · {plan.unmet.length} did not fit</span>
-            )}
-          </p>
+      <main className="mx-auto max-w-[920px] px-6 py-8">
+        <header className="mb-8 flex flex-wrap items-baseline justify-between gap-4">
+          <div>
+            <h1 className="text-[28px] font-bold text-fg">Task Inbox</h1>
+            <p className="mt-1 text-[13.5px] text-fg-muted">
+              {rows.length} {rows.length === 1 ? "intent" : "intents"} ·{" "}
+              {formatDuration(rows.reduce((s, r) => s + r.scheduled, 0))} scheduled
+              {plan && !plan.complete && (
+                <span className="font-semibold text-danger"> · {plan.unmet.length} did not fit</span>
+              )}
+            </p>
+          </div>
         </header>
 
         {error && (
-          <p className="mb-5 rounded-card border border-danger/30 bg-danger/5 px-4 py-3 text-[13px] text-danger">
+          <div className="mb-6 rounded-card border border-red-200 bg-red-50/70 p-4 text-[13.5px] text-danger shadow-xs">
             {error}
-          </p>
+          </div>
         )}
 
         {rows.length === 0 && !error && (
-          <div className="rounded-card border bg-surface px-6 py-14 text-center shadow-sm">
-            <p className="text-[15px] font-medium">Nothing scheduled yet</p>
-            <p className="mx-auto mt-2 max-w-sm text-[13px] leading-relaxed text-fg-muted">
-              Press <kbd className="tabular rounded bg-sunk px-1.5 py-0.5 text-[11px]">⌘K</kbd> and
-              describe what you need time for — “write the design doc, about 3 hours, by Friday”.
+          <div className="rounded-card border border-black/[0.06] bg-surface p-12 text-center shadow-sm">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-secondary text-indigo-600">
+              <Sparkles size={22} />
+            </div>
+            <p className="text-[16px] font-semibold text-fg">Nothing scheduled yet</p>
+            <p className="mx-auto mt-1.5 max-w-sm text-[13.5px] leading-relaxed text-fg-muted">
+              Press <kbd className="tabular rounded-md border border-black/5 bg-sunk px-2 py-0.5 text-[11.5px] font-mono">⌘K</kbd> and describe what you need time for - &quot;write the Q3 doc, 3 hours by Friday&quot;.
             </p>
           </div>
         )}
 
-        <ul className="space-y-2">
-          {rows.map(({ intent, blocks, scheduled, short, next }) => (
+        <ul className="space-y-3">
+          {rows.map(({ intent, blocks, scheduled, short, next, percent }) => (
             <li
               key={intent.id}
-              className="group flex items-start gap-3.5 rounded-card border bg-surface px-4 py-3.5 shadow-sm transition-shadow duration-150 hover:shadow-md"
+              className="group relative overflow-hidden rounded-card border border-black/[0.06] bg-surface p-4.5 shadow-sm transition-all duration-200 ease-spring hover:border-black/15 hover:shadow-md"
             >
-              <span
-                className="mt-0.5 h-9 w-[3px] shrink-0 rounded-full"
-                style={{ background: PRIORITY_TINT[intent.priority as Priority] }}
-                aria-hidden
-              />
+              <div className="flex items-start gap-4">
+                {/* Left Priority Bar Indicator */}
+                <div
+                  className="mt-1 h-10 w-1 shrink-0 rounded-full"
+                  style={{ background: PRIORITY_TINT[intent.priority as Priority] }}
+                  aria-hidden
+                />
 
-              <span className="mt-1 shrink-0 text-fg-subtle">
-                <Glyph kind={intent.kind} size={16} />
-              </span>
-
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-                  <span className="truncate text-[14.5px] font-medium">{intent.title}</span>
-                  <span className="tabular text-[11px] text-fg-muted">
-                    {KIND_LABEL[intent.kind]} · {PRIORITY_NAME[intent.priority as Priority]}
-                    {intent.period_days ? ` · every ${intent.period_days}d` : ""}
-                  </span>
+                <div className="mt-1 shrink-0 text-accent">
+                  <Glyph kind={intent.kind} size={18} />
                 </div>
 
-                <div className="tabular mt-1 text-[12px] text-fg-muted">
-                  {next ? (
-                    <>
-                      next{" "}
-                      <span className="text-fg">
-                        {new Date(next.start).toLocaleString([], {
-                          weekday: "short",
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })}
-                      </span>{" "}
-                      · {blocks.length} {blocks.length === 1 ? "block" : "blocks"} ·{" "}
-                      {formatDuration(scheduled)} of{" "}
-                      {formatDuration(intent.minutes_per_period)}
-                    </>
-                  ) : (
-                    <span className="text-danger">not scheduled</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="truncate text-[15px] font-semibold text-fg">{intent.title}</span>
+                    <span className="tabular text-[12px] font-medium text-fg-muted">
+                      {KIND_LABEL[intent.kind]} · {PRIORITY_NAME[intent.priority as Priority]}
+                      {intent.period_days ? ` · every ${intent.period_days}d` : ""}
+                    </span>
+                  </div>
+
+                  <div className="tabular mt-1.5 flex flex-wrap items-center gap-2 text-[12.5px] text-fg-muted">
+                    {next ? (
+                      <>
+                        <span className="inline-flex items-center gap-1 font-medium text-fg">
+                          <Clock size={13} className="text-accent" />
+                          {new Date(next.start).toLocaleString([], {
+                            weekday: "short",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                        <span>·</span>
+                        <span>{blocks.length} {blocks.length === 1 ? "block" : "blocks"}</span>
+                        <span>·</span>
+                        <span>{formatDuration(scheduled)} of {formatDuration(intent.minutes_per_period)}</span>
+                      </>
+                    ) : (
+                      <span className="font-semibold text-danger">Not placed</span>
+                    )}
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="mt-3 flex items-center gap-3">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-sunk">
+                      <div
+                        className="h-full rounded-full bg-accent transition-[width] duration-300"
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
+                    <span className="tabular text-[11px] font-medium text-fg-muted">{percent}%</span>
+                  </div>
+
+                  {short > 0 && (
+                    <div className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1 text-[12px] font-medium text-danger">
+                      <AlertCircle size={13} />
+                      {formatDuration(short)} could not be placed - widen its window or lower priority.
+                    </div>
                   )}
                 </div>
 
-                {short > 0 && (
-                  <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-danger/8 px-2 py-1 text-[11px] text-danger">
-                    {formatDuration(short)} could not be placed — widen its window or drop
-                    something else
-                  </div>
-                )}
+                <button
+                  type="button"
+                  onClick={() => remove(intent.id)}
+                  disabled={busy === intent.id}
+                  aria-label={`Remove ${intent.title}`}
+                  className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-fg-subtle opacity-0 transition-all duration-150 hover:bg-red-50 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-40"
+                >
+                  <Trash2 size={15} />
+                </button>
               </div>
-
-              <button
-                type="button"
-                onClick={() => remove(intent.id)}
-                disabled={busy === intent.id}
-                aria-label={`Remove ${intent.title}`}
-                // Hidden until hover on pointer devices, always present for
-                // keyboard and touch — a control you cannot reach is not a
-                // control.
-                className="mt-0.5 h-8 w-8 shrink-0 rounded-md text-fg-subtle opacity-0 transition-all duration-150 hover:bg-sunk hover:text-danger focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-40 [@media(hover:none)]:opacity-100"
-              >
-                ×
-              </button>
             </li>
           ))}
         </ul>

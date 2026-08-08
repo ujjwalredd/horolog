@@ -5,7 +5,8 @@ from __future__ import annotations
 import os
 import tempfile
 from collections.abc import AsyncIterator
-from datetime import datetime, timedelta
+import typing
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
@@ -92,7 +93,7 @@ async def test_replanning_an_unchanged_calendar_changes_nothing(client: AsyncCli
     first = (await client.post("/api/plan/solve")).json()
     again = (await client.post("/api/plan/solve")).json()
 
-    def key(plan: dict) -> dict[str, str]:
+    def key(plan: "dict[str, typing.Any]") -> "dict[str, str]":
         return {
             f"{b['intent_id']}:{b['occurrence']}:{b['chunk']}": b["start"] for b in plan["blocks"]
         }

@@ -3,55 +3,31 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
+import {
+  Calendar,
+  Inbox,
+  RotateCcw,
+  BarChart3,
+  Link2,
+  Sparkles,
+  Command,
+  Activity,
+  Hexagon,
+} from "lucide-react";
 import { CommandBar } from "@/app/components/CommandBar";
 
 const NAV = [
-  { href: "/planner", label: "Planner", icon: "grid" },
-  { href: "/inbox", label: "Task inbox", icon: "inbox" },
-  { href: "/habits", label: "Habits", icon: "repeat" },
-  { href: "/analytics", label: "Analytics", icon: "chart" },
-  { href: "/connect", label: "Calendars", icon: "link" },
+  { href: "/planner", label: "Planner", icon: Calendar },
+  { href: "/inbox", label: "Task inbox", icon: Inbox },
+  { href: "/habits", label: "Habits", icon: RotateCcw },
+  { href: "/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/connect", label: "Calendars", icon: Link2 },
 ] as const;
 
-const ICONS: Record<string, React.ReactNode> = {
-  grid: (
-    <>
-      <rect x="3" y="3" width="6.2" height="14" rx="1.6" />
-      <rect x="10.8" y="3" width="6.2" height="8" rx="1.6" />
-    </>
-  ),
-  inbox: (
-    <>
-      <path d="M3 12.2h3.4l1.1 2h4.9l1.2-2H17" />
-      <path d="M4.4 4.6h11.2l1.4 7.6v3.2a1.6 1.6 0 0 1-1.6 1.6H4.6A1.6 1.6 0 0 1 3 15.4v-3.2z" />
-    </>
-  ),
-  repeat: (
-    <>
-      <path d="M3.5 8.2A6.6 6.6 0 0 1 15.4 6.4" />
-      <path d="M16.5 11.8A6.6 6.6 0 0 1 4.6 13.6" />
-      <path d="M15.6 3.2v3.4h-3.4M4.4 16.8v-3.4h3.4" />
-    </>
-  ),
-  chart: (
-    <>
-      <path d="M3.4 16.6h13.2" />
-      <path d="M6 16.6V9.4M10 16.6V4.6M14 16.6v-4.8" />
-    </>
-  ),
-  link: (
-    <>
-      <path d="M8.4 11.6a3.4 3.4 0 0 0 5 .4l2-2a3.4 3.4 0 0 0-4.8-4.8l-1.1 1.1" />
-      <path d="M11.6 8.4a3.4 3.4 0 0 0-5-.4l-2 2a3.4 3.4 0 0 0 4.8 4.8l1.1-1.1" />
-    </>
-  ),
-};
-
-/** Chrome for the signed-in app: rail, ⌘K, and the live-plan indicator.
- *
- *  Lives in a layout rather than each page so the SSE connection is opened once
- *  for the whole session — a per-page subscription would tear down and re-open
- *  the stream on every navigation, and miss any change that landed in between.
+/** Ultra-Luxury Shell Navigation for Horolog.
+ *  Features Shadcn-style sidebar, Framer Motion animated active nav pill,
+ *  Apple-style pulsing live indicator, and ⌘K trigger.
  */
 export function Shell({
   children,
@@ -79,105 +55,124 @@ export function Shell({
     const stream = new EventSource("/api/stream");
     stream.addEventListener("plan", () => {
       setPulse(true);
-      setTimeout(() => setPulse(false), 1100);
+      setTimeout(() => setPulse(false), 1200);
       onPlanChange?.();
     });
     return () => stream.close();
   }, [onPlanChange]);
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="sticky top-0 hidden h-screen w-[210px] shrink-0 flex-col border-r bg-surface/60 px-3 py-4 lg:flex">
-        <Link href="/" className="mb-6 flex items-center gap-2.5 px-2">
-          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <circle cx="12" cy="12" r="9.25" stroke="var(--color-fg)" strokeWidth="1.5" />
-            <path
-              d="M12 6.75V12l3.4 2.1"
-              stroke="var(--color-accent)"
-              strokeWidth="1.9"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          <span className="text-[14.5px] font-semibold tracking-tight-optical">Horolog</span>
+    <div className="flex min-h-screen bg-background">
+      <aside className="sticky top-0 hidden h-screen w-[220px] shrink-0 flex-col border-r border-border bg-background px-3.5 py-5 lg:flex">
+        {/* Brand Mark */}
+        <Link
+          href="/"
+          className="group mb-7 flex items-center gap-2.5 px-2 transition-opacity duration-200 hover:opacity-80"
+        >
+          <div className="relative flex items-center justify-center text-primary">
+            <Hexagon className="h-7 w-7" />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[16px] font-serif tracking-tight text-foreground">Horolog</span>
+            <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+              Defend Time
+            </span>
+          </div>
         </Link>
 
-        <nav className="flex flex-col gap-0.5">
+        {/* Navigation items with spring layout active indicator */}
+        <nav className="flex flex-col gap-1">
           {NAV.map((item) => {
             const active = pathname === item.href;
+            const Icon = item.icon;
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`flex h-9 items-center gap-2.5 rounded-md px-2.5 text-[13.5px] transition-colors duration-150 ${
-                  active
-                    ? "bg-accent/10 font-medium text-accent"
-                    : "text-fg-muted hover:bg-sunk hover:text-fg"
+                className={`relative flex h-9.5 items-center gap-3 rounded-lg px-3 text-[13.5px] font-medium transition-colors duration-150 ${
+                  active ? "text-foreground font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
                 }`}
               >
-                <svg
-                  width="17"
-                  height="17"
-                  viewBox="0 0 20 20"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={1.5}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  {ICONS[item.icon]}
-                </svg>
-                {item.label}
+                {active && (
+                  <motion.div
+                    layoutId="activeNav"
+                    className="absolute inset-0 rounded-lg bg-secondary"
+                    transition={{ type: "spring", stiffness: 450, damping: 35 }}
+                  />
+                )}
+                <span className="relative z-10">
+                  <Icon size={17} className={active ? "text-foreground" : "text-muted-foreground"} />
+                </span>
+                <span className="relative z-10">{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
+        {/* Quick Capture Button (⌘K) */}
         <button
           type="button"
           onClick={() => setCommandOpen(true)}
-          className="mt-4 flex h-9 items-center justify-between rounded-md border bg-surface px-2.5 text-[13px] text-fg-muted shadow-sm transition-colors duration-150 hover:bg-sunk hover:text-fg"
+          className="group mt-5 flex h-10 items-center justify-between rounded-xl border border-border bg-background px-3 text-[13px] text-muted-foreground transition-all duration-200 hover:bg-secondary hover:text-foreground"
         >
-          Add time
-          <kbd className="tabular rounded bg-sunk px-1.5 py-0.5 text-[10px]">⌘K</kbd>
+          <span className="flex items-center gap-2 font-medium">
+            <Sparkles size={14} className="text-foreground transition-transform duration-200 group-hover:rotate-12" />
+            Add time
+          </span>
+          <kbd className="tabular inline-flex items-center gap-0.5 rounded-md border border-border bg-background px-1.5 py-0.5 text-[10.5px] font-mono text-muted-foreground">
+            <Command size={10} />K
+          </kbd>
         </button>
 
-        <div className="mt-auto flex items-center gap-2 px-2.5 pt-4">
-          <span
-            className={`h-1.5 w-1.5 rounded-full transition-colors duration-300 ${
-              pulse ? "bg-accent" : "bg-ok"
-            }`}
-            aria-hidden
-          />
-          <span className="text-[11px] text-fg-muted">
-            {pulse ? "re-planning…" : "plan is live"}
-          </span>
+        {/* Live SSE Plan Status Indicator */}
+        <div className="mt-auto flex items-center justify-between rounded-xl border border-border bg-secondary/30 px-3 py-2.5">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              <span
+                className={`absolute inline-flex h-full w-full rounded-full opacity-75 transition-colors duration-300 ${
+                  pulse ? "animate-ping bg-foreground" : "bg-green-500"
+                }`}
+              />
+              <span
+                className={`relative inline-flex h-2 w-2 rounded-full transition-colors duration-300 ${
+                  pulse ? "bg-foreground" : "bg-green-500"
+                }`}
+              />
+            </span>
+            <span className="text-[11.5px] font-medium text-muted-foreground">
+              {pulse ? "Optimizing..." : "Engine steady"}
+            </span>
+          </div>
+          <Activity size={13} className={pulse ? "animate-spin text-foreground" : "text-muted-foreground"} />
         </div>
       </aside>
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1 overflow-x-auto border-b bg-surface/60 px-4 py-2 lg:hidden">
-          {NAV.map((item) => (
+      {/* Mobile Nav */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 flex h-16 items-center justify-around border-t border-border bg-background/80 px-4 backdrop-blur-md lg:hidden">
+        {NAV.map((item) => {
+          const active = pathname === item.href;
+          const Icon = item.icon;
+          return (
             <Link
               key={item.href}
               href={item.href}
-              className={`shrink-0 rounded-md px-3 py-1.5 text-[13px] ${
-                pathname === item.href ? "bg-accent/10 text-accent" : "text-fg-muted"
+              className={`flex flex-col items-center gap-1 ${
+                active ? "text-foreground font-semibold" : "text-muted-foreground"
               }`}
             >
-              {item.label}
+              <Icon size={20} className={active ? "text-foreground" : "text-muted-foreground"} />
+              <span className="text-[10px]">{item.label}</span>
             </Link>
-          ))}
-        </div>
-        {children}
+          );
+        })}
       </div>
 
-      <CommandBar
-        open={commandOpen}
-        onClose={() => setCommandOpen(false)}
-        onCaptured={() => onPlanChange?.()}
+      <main className="flex-1 pb-20 lg:pb-0">{children}</main>
+      <CommandBar 
+        open={commandOpen} 
+        onClose={() => setCommandOpen(false)} 
+        onCaptured={() => setCommandOpen(false)} 
       />
     </div>
   );

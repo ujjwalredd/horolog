@@ -2,7 +2,7 @@
 name = "horolog"
 version = "0.1.0"
 description = "Open-source, self-hostable AI calendar auto-scheduler"
-readme = "../../README.md"
+readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }
 requires-python = ">=3.12,<3.14"
 keywords = ["calendar", "ai", "auto-scheduler", "reclaim", "productivity"]

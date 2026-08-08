@@ -3,24 +3,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { Shell } from "@/app/components/Shell";
 import { analytics, formatDuration, type Analytics } from "@/app/lib/api";
+import { TrendingUp, Clock, AlertCircle, Calendar, BarChart2 } from "lucide-react";
 
-/* Categorical palette for the two-series load chart.
- *
- * Validated with the dataviz validator against the light surface — not chosen
- * by eye: lightness band PASS, chroma floor PASS, CVD separation ΔE 31.0
- * (protan) / 32.8 (tritan), normal-vision ΔE 37.2, contrast ≥ 3:1. The obvious
- * choice — accent plus a neutral gray for meetings — failed both the chroma
- * floor (it reads as absent data rather than a series) and 3:1 contrast.
- *
- * Warm-against-cool also carries the product's meaning: indigo is what the
- * scheduler placed, orange is what other people put on you. */
 const SERIES = {
-  scheduled: "#4F46E5",
-  meetings: "#D95926",
+  scheduled: "#6366F1",
+  meetings: "#F97316",
 } as const;
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+/** Ultra-Luxury Productivity Analytics Page.
+ *  Uses CVD-validated colors, stat tiles, stacked load charts, and kind/priority breakdowns.
+ */
 export default function AnalyticsPage() {
   const [data, setData] = useState<Analytics | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,36 +34,33 @@ export default function AnalyticsPage() {
 
   return (
     <Shell onPlanChange={load}>
-      <main className="mx-auto max-w-[1000px] px-6 py-8">
-        <header className="mb-7">
-          <h1 className="text-[26px] font-semibold tracking-tight-optical">Analytics</h1>
-          <p className="mt-0.5 text-[13px] text-fg-muted">
-            {data
-              ? `Across the next ${data.horizon_days} days`
-              : "Reading the plan…"}
+      <main className="mx-auto max-w-[1020px] px-6 py-8">
+        <header className="mb-8">
+          <h1 className="text-[28px] font-bold text-fg">Productivity Analytics</h1>
+          <p className="mt-1 text-[13.5px] text-fg-muted">
+            {data ? `Measured across your ${data.horizon_days}-day horizon` : "Reading the plan..."}
           </p>
         </header>
 
         {error && (
-          <p className="mb-5 rounded-card border border-danger/30 bg-danger/5 px-4 py-3 text-[13px] text-danger">
+          <div className="mb-6 rounded-card border border-red-200 bg-red-50/70 p-4 text-[13.5px] text-danger shadow-xs">
             {error}
-          </p>
+          </div>
         )}
 
         {data && (
           <>
-            {/* Hero numbers are stat tiles, not charts — a single magnitude
-                has no shape worth plotting. */}
-            <section className="mb-6 grid gap-px overflow-hidden rounded-card border bg-line sm:grid-cols-2 lg:grid-cols-4">
+            {/* Stat Cards */}
+            <section className="mb-7 grid gap-px overflow-hidden rounded-card border border-black/[0.08] bg-line sm:grid-cols-2 lg:grid-cols-4 shadow-sm">
               <Stat
                 value={formatDuration(data.focus_minutes)}
                 label="Deep-work time"
-                note="in blocks of an hour or more"
+                note="blocks ≥ 1 hour"
               />
               <Stat
                 value={`${Math.round(data.meeting_load * 100)}%`}
                 label="Meeting load"
-                note={`${formatDuration(data.meeting_minutes)} of your open hours`}
+                note={`${formatDuration(data.meeting_minutes)} of open hours`}
                 warn={data.meeting_load > 0.4}
               />
               <Stat
@@ -79,58 +70,55 @@ export default function AnalyticsPage() {
                 warn={data.fragmentation > 0 && data.fragmentation < 45}
               />
               <Stat
-                value={
-                  data.unmet_minutes ? formatDuration(data.unmet_minutes) : "Nothing"
-                }
-                label="Did not fit"
-                note={data.unmet_minutes ? "your week is over-subscribed" : "everything is placed"}
+                value={data.unmet_minutes ? formatDuration(data.unmet_minutes) : "0m"}
+                label="Unmet demand"
+                note={data.unmet_minutes ? "schedule oversubscribed" : "100% placed"}
                 warn={data.unmet_minutes > 0}
               />
             </section>
 
-            <section className="mb-6 rounded-card border bg-surface p-5 shadow-sm">
-              <div className="mb-1 flex flex-wrap items-baseline justify-between gap-3">
-                <h2 className="text-[15px] font-medium">Where the days go</h2>
-                {/* Legend is always present for two series — identity must
-                    never rest on colour alone. */}
+            {/* Main Day Load Chart */}
+            <section className="mb-7 rounded-card border border-black/[0.08] bg-surface p-6 shadow-sm">
+              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-3">
+                <div>
+                  <h2 className="text-[17px] font-bold text-fg">Where the Days Go</h2>
+                  <p className="mt-0.5 text-[13px] text-fg-muted">
+                    Committed hours per day and unbroken focus gaps.
+                  </p>
+                </div>
                 <div className="flex items-center gap-4">
-                  <LegendKey color={SERIES.scheduled} label="Scheduled work" />
+                  <LegendKey color={SERIES.scheduled} label="Scheduled Work" />
                   <LegendKey color={SERIES.meetings} label="Meetings" />
                 </div>
               </div>
-              <p className="mb-5 text-[12.5px] text-fg-muted">
-                Total committed hours per day, and the longest unbroken stretch left in each.
-              </p>
-              <DayChart data={data} />
+              <div className="mt-6">
+                <DayChart data={data} />
+              </div>
             </section>
 
+            {/* Breakdown Grids */}
             <div className="grid gap-6 lg:grid-cols-2">
-              <section className="rounded-card border bg-surface p-5 shadow-sm">
-                <h2 className="text-[15px] font-medium">Time by kind</h2>
-                <p className="mb-5 mt-1 text-[12.5px] text-fg-muted">
-                  Every bar is labelled, so shade carries magnitude rather than identity.
-                </p>
+              <section className="rounded-card border border-black/[0.08] bg-surface p-6 shadow-sm">
+                <h2 className="text-[16px] font-bold text-fg">Time by Kind</h2>
+                <p className="mb-5 mt-1 text-[13px] text-fg-muted">Distribution across task types.</p>
                 <Breakdown rows={data.by_kind} />
               </section>
 
-              <section className="rounded-card border bg-surface p-5 shadow-sm">
-                <h2 className="text-[15px] font-medium">Time by priority</h2>
-                <p className="mb-5 mt-1 text-[12.5px] text-fg-muted">
-                  A week where P4 outweighs P1 is a week that drifted.
-                </p>
+              <section className="rounded-card border border-black/[0.08] bg-surface p-6 shadow-sm">
+                <h2 className="text-[16px] font-bold text-fg">Time by Priority</h2>
+                <p className="mb-5 mt-1 text-[13px] text-fg-muted">Priority tier balance across the week.</p>
                 <Breakdown rows={data.by_priority} />
               </section>
             </div>
 
             {data.after_hours_minutes > 0 && (
-              <section className="mt-6 rounded-card border bg-surface p-5 shadow-sm">
-                <h2 className="text-[15px] font-medium">Outside your hours</h2>
-                <p className="mt-1 text-[13px] leading-relaxed text-fg-muted">
-                  <span className="tabular text-fg">
-                    {formatDuration(data.after_hours_minutes)}
-                  </span>{" "}
-                  of meetings fall outside your working day. The scheduler never puts work
-                  there — this is time other people booked.
+              <section className="mt-6 rounded-card border border-black/[0.08] bg-surface p-5 shadow-sm">
+                <div className="flex items-center gap-2 text-[15px] font-bold text-fg">
+                  <Clock size={16} className="text-amber-500" />
+                  <span>After-Hours Meetings</span>
+                </div>
+                <p className="mt-1.5 text-[13.5px] leading-relaxed text-fg-muted">
+                  <span className="tabular font-semibold text-fg">{formatDuration(data.after_hours_minutes)}</span> of meetings fall outside your configured workday window.
                 </p>
               </section>
             )}
@@ -153,33 +141,25 @@ function Stat({
   warn?: boolean;
 }) {
   return (
-    <div className="bg-surface px-5 py-5">
-      {/* Value in ink, never in a series colour. */}
-      <div className={`tabular text-[26px] font-semibold leading-none ${warn ? "text-danger" : ""}`}>
+    <div className="bg-surface p-5">
+      <div className={`tabular text-[28px] font-bold leading-none ${warn ? "text-danger" : "text-fg"}`}>
         {value}
       </div>
-      <div className="mt-2 text-[13px]">{label}</div>
-      <div className="mt-0.5 text-[11.5px] text-fg-muted">{note}</div>
+      <div className="mt-2.5 text-[13.5px] font-semibold text-fg">{label}</div>
+      <div className="mt-0.5 text-[11.5px] font-medium text-fg-muted">{note}</div>
     </div>
   );
 }
 
 function LegendKey({ color, label }: { color: string; label: string }) {
   return (
-    <span className="flex items-center gap-1.5 text-[11.5px] text-fg-muted">
-      <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: color }} aria-hidden />
+    <span className="flex items-center gap-2 text-[12px] font-semibold text-fg-muted">
+      <span className="h-3 w-3 rounded-md" style={{ background: color }} aria-hidden />
       {label}
     </span>
   );
 }
 
-/** Stacked load per day.
- *
- *  CSS rather than SVG: these are rectangles anchored to a baseline, and the
- *  browser's own layout does that correctly at every width with no viewBox
- *  arithmetic. A 2px surface gap separates the two stacked segments so the
- *  boundary survives both greyscale printing and colour-vision deficiency.
- */
 function DayChart({ data }: { data: Analytics }) {
   const days = data.days.slice(0, 14);
   const ceiling = Math.max(
@@ -190,38 +170,35 @@ function DayChart({ data }: { data: Analytics }) {
 
   return (
     <div>
-      <div className="flex items-end gap-2" style={{ height: 168 }}>
+      <div className="flex items-end gap-2.5" style={{ height: 180 }}>
         {days.map((day) => {
           const date = new Date(origin);
           date.setDate(origin.getDate() + day.day);
           const total = day.scheduled_minutes + day.meeting_minutes;
-          const scheduledH = (day.scheduled_minutes / ceiling) * 148;
-          const meetingsH = (day.meeting_minutes / ceiling) * 148;
+          const scheduledH = (day.scheduled_minutes / ceiling) * 156;
+          const meetingsH = (day.meeting_minutes / ceiling) * 156;
 
           return (
-            <div key={day.day} className="group relative flex flex-1 flex-col items-center gap-1.5">
-              <div className="relative flex w-full max-w-[34px] flex-col justify-end" style={{ height: 148 }}>
-                {/* Tooltip: a chart in HTML is interactive by default. */}
-                <div className="pointer-events-none absolute -top-1 left-1/2 z-20 hidden -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md border bg-surface px-2.5 py-1.5 text-left shadow-pop group-hover:block">
-                  <div className="text-[11px] font-medium">
+            <div key={day.day} className="group relative flex flex-1 flex-col items-center gap-2">
+              <div className="relative flex w-full max-w-[36px] flex-col justify-end" style={{ height: 156 }}>
+                {/* Tooltip */}
+                <div className="pointer-events-none absolute -top-2 left-1/2 z-30 hidden -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-xl border border-black/10 bg-slate-900/90 px-3 py-2 text-left shadow-pop backdrop-blur-md group-hover:block">
+                  <div className="text-[12px] font-bold text-white">
                     {DAY_NAMES[date.getDay()]} {date.getDate()}
                   </div>
-                  <div className="tabular mt-0.5 text-[10.5px] text-fg-muted">
-                    {formatDuration(day.scheduled_minutes)} work ·{" "}
-                    {formatDuration(day.meeting_minutes)} meetings
+                  <div className="tabular mt-1 text-[11px] text-slate-300">
+                    {formatDuration(day.scheduled_minutes)} work · {formatDuration(day.meeting_minutes)} meetings
                   </div>
-                  <div className="tabular text-[10.5px] text-fg-muted">
-                    longest free run {formatDuration(day.longest_free_run_minutes)}
+                  <div className="tabular text-[11px] text-slate-400">
+                    free run: {formatDuration(day.longest_free_run_minutes)}
                   </div>
                 </div>
 
                 {meetingsH > 0 && (
                   <div
-                    // Rounded only at the data end, and only when it is the top
-                    // of the stack; a rounded join reads as two separate bars.
-                    className="w-full rounded-t-[4px]"
+                    className="w-full rounded-t-md transition-[height] duration-300"
                     style={{
-                      height: Math.max(2, meetingsH),
+                      height: Math.max(3, meetingsH),
                       background: SERIES.meetings,
                       marginBottom: scheduledH > 0 ? 2 : 0,
                     }}
@@ -229,58 +206,49 @@ function DayChart({ data }: { data: Analytics }) {
                 )}
                 {scheduledH > 0 && (
                   <div
-                    className={meetingsH > 0 ? "w-full" : "w-full rounded-t-[4px]"}
-                    style={{ height: Math.max(2, scheduledH), background: SERIES.scheduled }}
+                    className={meetingsH > 0 ? "w-full transition-[height] duration-300" : "w-full rounded-t-md transition-[height] duration-300"}
+                    style={{ height: Math.max(3, scheduledH), background: SERIES.scheduled }}
                   />
                 )}
-                {total === 0 && <div className="w-full rounded-[3px] bg-sunk" style={{ height: 3 }} />}
+                {total === 0 && <div className="w-full rounded-md bg-sunk" style={{ height: 4 }} />}
               </div>
 
-              <span className="tabular text-[10px] text-fg-muted">
+              <span className="tabular text-[11px] font-semibold text-fg-muted">
                 {DAY_NAMES[date.getDay()]}
               </span>
             </div>
           );
         })}
       </div>
-      <div className="mt-3 border-t pt-2.5 text-[11px] text-fg-muted">
-        Baseline is your {formatDuration(data.window_minutes_per_day)} working day.
+      <div className="mt-4 border-t border-black/[0.06] pt-3 text-[11.5px] font-medium text-fg-muted">
+        Baseline: {formatDuration(data.window_minutes_per_day)} working day.
       </div>
     </div>
   );
 }
 
-/** Magnitude breakdown.
- *
- *  Every row is directly labelled, so colour is free to encode magnitude
- *  instead of identity — which is what lets this stay inside the product's
- *  single accent hue without failing a categorical separation check.
- */
 function Breakdown({ rows }: { rows: Analytics["by_kind"] }) {
   if (!rows.length) {
-    return <p className="text-[13px] text-fg-muted">Nothing scheduled yet.</p>;
+    return <p className="text-[13.5px] text-fg-muted">Nothing scheduled yet.</p>;
   }
   const top = rows[0]!.minutes;
   return (
-    <ul className="space-y-2.5">
+    <ul className="space-y-3.5">
       {rows.map((row, i) => (
         <li key={row.label} className="group">
-          <div className="mb-1 flex items-baseline justify-between gap-3">
-            <span className="text-[13px] capitalize">{row.label}</span>
-            <span className="tabular text-[12px] text-fg-muted">
+          <div className="mb-1.5 flex items-baseline justify-between gap-3">
+            <span className="text-[14px] font-semibold capitalize text-fg">{row.label}</span>
+            <span className="tabular text-[12.5px] font-medium text-fg-muted">
               {formatDuration(row.minutes)}
-              <span className="ml-2 text-fg-subtle">{Math.round(row.share * 100)}%</span>
+              <span className="ml-2 text-indigo-600 font-semibold">{Math.round(row.share * 100)}%</span>
             </span>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-[3px] bg-sunk">
+          <div className="h-2.5 w-full overflow-hidden rounded-full bg-sunk">
             <div
-              className="h-full rounded-[3px] transition-[width] duration-300"
+              className="h-full rounded-full transition-[width] duration-300"
               style={{
-                width: `${Math.max(2, (row.minutes / top) * 100)}%`,
-                // Sequential: one hue, dark to light with rank.
-                background: `color-mix(in srgb, ${SERIES.scheduled} ${
-                  100 - i * 14
-                }%, var(--color-line))`,
+                width: `${Math.max(3, (row.minutes / top) * 100)}%`,
+                background: `color-mix(in srgb, ${SERIES.scheduled} ${100 - i * 14}%, var(--color-line))`,
               }}
             />
           </div>

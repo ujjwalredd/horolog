@@ -7,13 +7,13 @@ models it as **a demand with a window and a priority**, and re-solves whenever
 reality changes. Everything else follows from that.
 
 Focus time, habits, tasks, buffers and smart meetings are **one primitive under
-five names** — an activity with a duration, a temporal domain, an
+five names** - an activity with a duration, a temporal domain, an
 interruptibility, a periodicity and a priority. This is not a simplification
 invented here: SelfPlanner (Refanidis & Alexiadis, *ACM TIST*) published exactly
 this model as a constraint-optimisation problem a decade before Reclaim shipped.
 
 One table, one placement path. A sixth feature means a new `kind` and a factory
-function — never a new scheduler.
+function - never a new scheduler.
 
 ```
 Intent (one row)                       reads as
@@ -65,7 +65,7 @@ would express in an objective function is an ordering rule here:
 
 | Concern | How it is expressed |
 |---|---|
-| Priority preemption | sort key — P1 claims slots before P4 sees them |
+| Priority preemption | sort key - P1 claims slots before P4 sees them |
 | Stability (MPP) | previous placements are *reserved* before anything is reallocated |
 | Deadlines | earlier due dates sort first |
 | Time of day | window ranking |
@@ -95,7 +95,7 @@ Pinned by `test_a_busy_week_does_not_cascade`.
 
 ### Why not a constraint solver
 
-The first implementation was OR-Tools CP-SAT — optional interval variables,
+The first implementation was OR-Tools CP-SAT - optional interval variables,
 `NoOverlap`, a weighted objective with a minimal-perturbation term. It was
 removed after measurement:
 
@@ -109,7 +109,7 @@ removed after measurement:
 
 Half a percent of schedule quality did not justify a 90 MB dependency, a 2-second
 budget, presolve tuning, and an OR-Tools crash workaround. `score.py` keeps that
-comparison reproducible if anyone wants to re-litigate it — the metric is still
+comparison reproducible if anyone wants to re-litigate it - the metric is still
 there, nothing optimises it.
 
 ## Time representation
@@ -127,7 +127,7 @@ origin (midnight today, in the configured zone). No datetimes reach `solver/`.
 
 ## Database schema
 
-Three tables. Deliberately few — a plan is *derived*, and deriving it costs
+Three tables. Deliberately few - a plan is *derived*, and deriving it costs
 single-digit milliseconds, so it is recomputed rather than stored as rows.
 
 ### `intents`
@@ -146,13 +146,13 @@ a second copy of the schema in DDL, to be kept in sync by hand.
 | column | type | notes |
 |---|---|---|
 | `id` | `varchar(128)` PK | `{source}:{uuid}` |
-| `source` | `varchar(32)` | `manual` \| `ics` \| `caldav` — sync replaces per source |
+| `source` | `varchar(32)` | `manual` \| `ics` \| `caldav` - sync replaces per source |
 | `label` | `varchar(256)` | |
 | `start_slot` | `integer` indexed | |
 | `end_slot` | `integer` | |
 
 Slots, not timestamps: this table is read on every re-plan and the engine wants
-integers. Overlapping rows are fine — they are merged at solve time, because
+integers. Overlapping rows are fine - they are merged at solve time, because
 real calendars are double-booked constantly.
 
 ### `plans`
@@ -176,12 +176,12 @@ The model is confined to one job: turning a sentence into a candidate `Intent`.
 1. **Grammar-constrained decoding.** The schema is enforced at the sampling
    stage, so structurally invalid JSON is unrepresentable rather than
    discouraged.
-2. **Semantic validation.** Pydantic checks what a grammar cannot — that the
+2. **Semantic validation.** Pydantic checks what a grammar cannot - that the
    chunk fits inside the window, that the total exceeds one chunk. One repair
    round carries the error back; a second failure surfaces to a form.
 3. **No write path.** The model cannot place time. Only the scheduler can, and
    only against real availability. A hallucinated intent produces a
-   wrong-looking task the user can delete — never a phantom calendar event.
+   wrong-looking task the user can delete - never a phantom calendar event.
 
 Layer 3 is the one that holds under a bad model. Prompt discipline alone would not.
 
@@ -190,7 +190,7 @@ Two providers, because the wire formats genuinely differ: OpenAI-compatible
 
 ## Frontend
 
-Next.js 15 App Router, Tailwind v4, no component library. Light theme only —
+Next.js 15 App Router, Tailwind v4, no component library. Light theme only -
 a half-tuned second theme reads worse than one exact one.
 
 Design tokens live in `app/globals.css`. Two decisions carry most of the look:
@@ -205,7 +205,7 @@ Only priority uses colour (accent at four weights); kind uses a glyph, movabilit
 uses the left rule style, and other people's meetings use a sunk fill with no
 accent at all. That also satisfies "never rely on colour alone".
 
-Chart colours are the exception and are **validated, not chosen** — see the
+Chart colours are the exception and are **validated, not chosen** - see the
 comment block in `app/analytics/page.tsx` for the recorded CVD separation figures.
 
 ## Known ceilings

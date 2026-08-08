@@ -13,6 +13,7 @@ import {
   type Plan,
   type Priority,
 } from "@/app/lib/api";
+import { Plus, Trash2, RotateCcw, AlertTriangle, Sparkles, Clock } from "lucide-react";
 
 const PRESETS = [
   { title: "Gym", times: 3, minutes: 60, from: 600, to: 960, priority: 4 },
@@ -32,12 +33,8 @@ function toMinutes(value: string): number {
   return Number(h) * 60 + Number(m);
 }
 
-/** Habit builder.
- *
- *  The form is shaped the way people describe a routine — "three times a week,
- *  an hour each, between 10 and 4" — rather than the way the engine stores it
- *  (total minutes per period, chunk bounds, per-day cap). The conversion is
- *  four lines; making the user do it in their head is the actual cost.
+/** Ultra-Luxury Habit Builder & Routine Manager.
+ *  Allows configuring recurring routines in natural human terms.
  */
 export default function Habits() {
   const [intents, setIntents] = useState<Intent[]>([]);
@@ -84,9 +81,6 @@ export default function Habits() {
         title: title.trim(),
         kind: "habit",
         priority,
-        // The engine wants a total per period and a chunk size; the form
-        // collects "how often" and "how long", which is the same information
-        // in the units a person actually thinks in.
         minutes_per_period: times * minutes,
         period_days: 7,
         min_chunk_minutes: minutes,
@@ -106,37 +100,38 @@ export default function Habits() {
 
   return (
     <Shell onPlanChange={load}>
-      <main className="mx-auto max-w-[900px] px-6 py-8">
-        <header className="mb-7">
-          <h1 className="text-[26px] font-semibold tracking-tight-optical">Habits</h1>
-          <p className="mt-0.5 text-[13px] text-fg-muted">
-            Recurring routines the scheduler places for you, and moves when a meeting lands
-            on one.
+      <main className="mx-auto max-w-[920px] px-6 py-8">
+        <header className="mb-8">
+          <h1 className="text-[28px] font-bold text-fg">Habits & Routines</h1>
+          <p className="mt-1 text-[13.5px] text-fg-muted">
+            Recurring commitments placed around real calendar events and moved automatically when meetings land.
           </p>
         </header>
 
         {error && (
-          <p className="mb-5 rounded-card border border-danger/30 bg-danger/5 px-4 py-3 text-[13px] text-danger">
+          <div className="mb-6 rounded-card border border-red-200 bg-red-50/70 p-4 text-[13.5px] text-danger shadow-xs">
             {error}
-          </p>
+          </div>
         )}
 
+        {/* Habit Creation Form */}
         <form
           onSubmit={save}
-          className="mb-7 overflow-hidden rounded-card border bg-surface shadow-sm"
+          className="mb-9 overflow-hidden rounded-card border border-black/[0.08] bg-surface shadow-sm transition-shadow hover:shadow-md"
         >
-          <div className="border-b px-5 py-4">
-            <label htmlFor="habit-title" className="mb-1.5 block text-[12px] font-medium text-fg-muted">
-              What is the routine?
+          <div className="border-b border-black/[0.06] px-6 py-4.5">
+            <label htmlFor="habit-title" className="mb-2 block text-[12px] font-semibold tracking-wider uppercase text-fg-muted">
+              Routine Title
             </label>
             <input
               id="habit-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Gym, deep work, lunch…"
-              className="h-10 w-full rounded-md border bg-bg px-3 text-[14px] outline-none transition-colors focus:border-accent"
+              placeholder="Gym, deep work, lunch..."
+              className="h-11 w-full rounded-xl border border-black/[0.08] bg-bg px-4 text-[15px] font-medium outline-none transition-colors focus:border-accent"
             />
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
+            {/* Quick Presets */}
+            <div className="mt-3 flex flex-wrap gap-2">
               {PRESETS.map((preset) => (
                 <button
                   key={preset.title}
@@ -149,30 +144,31 @@ export default function Habits() {
                     setTo(preset.to);
                     setPriority(preset.priority as Priority);
                   }}
-                  className="rounded-full border bg-bg px-3 py-1 text-[12px] text-fg-muted transition-colors duration-150 hover:border-accent hover:text-accent"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-black/[0.08] bg-bg px-3 py-1 text-[12px] font-medium text-fg-muted transition-all duration-150 hover:border-accent hover:bg-secondary/50 hover:text-accent"
                 >
+                  <Sparkles size={12} className="text-accent" />
                   {preset.title}
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="grid gap-4 px-5 py-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Field label="How often" hint="times a week">
+          <div className="grid gap-5 px-6 py-5 sm:grid-cols-2 lg:grid-cols-4">
+            <Field label="Frequency" hint="times / week">
               <input
                 type="number"
                 min={1}
                 max={14}
                 value={times}
                 onChange={(e) => setTimes(Math.max(1, Number(e.target.value)))}
-                className="tabular h-9 w-full rounded-md border bg-bg px-3 text-[14px] outline-none focus:border-accent"
+                className="tabular h-10 w-full rounded-xl border border-black/[0.08] bg-bg px-3.5 text-[14px] font-semibold outline-none focus:border-accent"
               />
             </Field>
-            <Field label="How long" hint="minutes each">
+            <Field label="Duration" hint="per session">
               <select
                 value={minutes}
                 onChange={(e) => setMinutes(Number(e.target.value))}
-                className="tabular h-9 w-full rounded-md border bg-bg px-3 text-[14px] outline-none focus:border-accent"
+                className="tabular h-10 w-full rounded-xl border border-black/[0.08] bg-bg px-3.5 text-[14px] font-semibold outline-none focus:border-accent"
               >
                 {[15, 30, 45, 60, 90, 120].map((m) => (
                   <option key={m} value={m}>
@@ -181,25 +177,25 @@ export default function Habits() {
                 ))}
               </select>
             </Field>
-            <Field label="Between" hint="earliest">
+            <Field label="Earliest" hint="window start">
               <input
                 type="time"
                 value={clock(from)}
                 onChange={(e) => setFrom(toMinutes(e.target.value))}
-                className="tabular h-9 w-full rounded-md border bg-bg px-3 text-[14px] outline-none focus:border-accent"
+                className="tabular h-10 w-full rounded-xl border border-black/[0.08] bg-bg px-3.5 text-[14px] font-semibold outline-none focus:border-accent"
               />
             </Field>
-            <Field label="And" hint="latest">
+            <Field label="Latest" hint="window end">
               <input
                 type="time"
                 value={clock(to)}
                 onChange={(e) => setTo(toMinutes(e.target.value))}
-                className="tabular h-9 w-full rounded-md border bg-bg px-3 text-[14px] outline-none focus:border-accent"
+                className="tabular h-10 w-full rounded-xl border border-black/[0.08] bg-bg px-3.5 text-[14px] font-semibold outline-none focus:border-accent"
               />
             </Field>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-sunk px-5 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-t border-black/[0.06] bg-sunk/40 px-6 py-3.5">
             <div className="flex items-center gap-1.5">
               {([1, 2, 3, 4] as const).map((p) => (
                 <button
@@ -207,12 +203,12 @@ export default function Habits() {
                   type="button"
                   onClick={() => setPriority(p)}
                   aria-pressed={priority === p}
-                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] transition-colors duration-150 ${
-                    priority === p ? "bg-surface shadow-sm" : "text-fg-muted hover:bg-surface/60"
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-all duration-150 ${
+                    priority === p ? "bg-surface shadow-sm border border-black/[0.08]" : "text-fg-muted hover:bg-surface/60"
                   }`}
                 >
                   <span
-                    className="h-3 w-[3px] rounded-sm"
+                    className="h-3 w-1 rounded-full"
                     style={{ background: PRIORITY_TINT[p] }}
                     aria-hidden
                   />
@@ -223,58 +219,57 @@ export default function Habits() {
             <button
               type="submit"
               disabled={!title.trim() || windowTooSmall || saving}
-              className="h-9 rounded-md bg-accent px-4 text-[13px] font-medium text-on-accent transition-colors duration-150 hover:bg-accent-hover disabled:opacity-40"
+              className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-accent px-5 text-[13.5px] font-semibold text-on-accent shadow-sm transition-all duration-150 hover:bg-accent-hover hover:shadow-md disabled:opacity-40"
             >
-              {saving ? "Scheduling…" : "Add habit"}
+              <Plus size={16} />
+              {saving ? "Scheduling..." : "Add Routine"}
             </button>
           </div>
 
-          {/* Caught here rather than as a 422 after submit — the user can see
-              the window is too short before they commit to it. */}
           {windowTooSmall && (
-            <p className="border-t bg-danger/5 px-5 py-2.5 text-[12px] text-danger">
-              That window is {formatDuration(Math.max(0, to - from))} long but each session needs{" "}
-              {formatDuration(minutes)}. Widen it, or shorten the session.
-            </p>
+            <div className="flex items-center gap-2 border-t border-red-200 bg-red-50/70 px-6 py-3 text-[12.5px] font-medium text-danger">
+              <AlertTriangle size={15} />
+              <span>
+                Window ({formatDuration(Math.max(0, to - from))}) is shorter than session duration ({formatDuration(minutes)}).
+              </span>
+            </div>
           )}
         </form>
 
-        <h2 className="mb-3 text-[12px] font-medium uppercase tracking-wide text-fg-muted">
-          Active routines
+        <h2 className="mb-3.5 text-[12px] font-semibold tracking-wider uppercase text-fg-muted">
+          Active Routines ({habits.length})
         </h2>
 
         {habits.length === 0 ? (
-          <p className="rounded-card border bg-surface px-6 py-10 text-center text-[13px] text-fg-muted shadow-sm">
-            No routines yet. Add one above, or press ⌘K and just describe it.
-          </p>
+          <div className="rounded-card border border-black/[0.06] bg-surface p-10 text-center shadow-sm">
+            <p className="text-[14px] font-semibold text-fg">No active routines</p>
+            <p className="mt-1 text-[13px] text-fg-muted">Configure a habit above or use ⌘K to describe it.</p>
+          </div>
         ) : (
-          <ul className="space-y-2">
+          <ul className="space-y-3">
             {habits.map((habit) => {
               const blocks = plan?.blocks.filter((b) => b.intent_id === habit.id) ?? [];
-              // "N x a week" is only true when every session is the same length.
-              // For a goal with a range (90-120m), a count is a guess — state the
-              // weekly total and the block range instead of inventing a number.
               const fixed = habit.min_chunk_minutes === habit.max_chunk_minutes;
               const cadence = fixed
-                ? `${Math.round(habit.minutes_per_period / habit.min_chunk_minutes)}× a week · ${formatDuration(habit.min_chunk_minutes)} each`
-                : `${formatDuration(habit.minutes_per_period)} a week · ${formatDuration(habit.min_chunk_minutes)}–${formatDuration(habit.max_chunk_minutes)} blocks`;
+                ? `${Math.round(habit.minutes_per_period / habit.min_chunk_minutes)}× weekly · ${formatDuration(habit.min_chunk_minutes)} each`
+                : `${formatDuration(habit.minutes_per_period)} weekly · ${formatDuration(habit.min_chunk_minutes)}–${formatDuration(habit.max_chunk_minutes)} blocks`;
               return (
                 <li
                   key={habit.id}
-                  className="group flex items-center gap-3.5 rounded-card border bg-surface px-4 py-3.5 shadow-sm"
+                  className="group flex items-center gap-4 rounded-card border border-black/[0.06] bg-surface p-4.5 shadow-sm transition-all duration-200 hover:shadow-md"
                 >
                   <span
-                    className="h-9 w-[3px] shrink-0 rounded-full"
+                    className="h-10 w-1 shrink-0 rounded-full"
                     style={{ background: PRIORITY_TINT[habit.priority as Priority] }}
                     aria-hidden
                   />
-                  <span className="shrink-0 text-fg-subtle">
-                    <Glyph kind={habit.kind} size={16} />
+                  <span className="shrink-0 text-accent">
+                    <Glyph kind={habit.kind} size={18} />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[14.5px] font-medium">{habit.title}</div>
-                    <div className="tabular mt-0.5 text-[12px] text-fg-muted">
-                      {cadence} · {blocks.length} placed
+                    <div className="truncate text-[15px] font-semibold text-fg">{habit.title}</div>
+                    <div className="tabular mt-1 text-[12.5px] font-medium text-fg-muted">
+                      {cadence} · <span className="text-accent font-semibold">{blocks.length} placed</span>
                     </div>
                   </div>
                   <button
@@ -284,9 +279,9 @@ export default function Habits() {
                       await load();
                     }}
                     aria-label={`Remove ${habit.title}`}
-                    className="h-8 w-8 shrink-0 rounded-md text-fg-subtle opacity-0 transition-all duration-150 hover:bg-sunk hover:text-danger focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-fg-subtle opacity-0 transition-all duration-150 hover:bg-red-50 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
                   >
-                    ×
+                    <Trash2 size={15} />
                   </button>
                 </li>
               );
@@ -309,7 +304,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[12px] font-medium text-fg-muted">
+      <span className="mb-1.5 block text-[12px] font-semibold text-fg-muted">
         {label} <span className="font-normal text-fg-subtle">· {hint}</span>
       </span>
       {children}

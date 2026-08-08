@@ -297,14 +297,15 @@ async def capture_intent(body: CaptureIn, db: AsyncSession = Depends(session)) -
     return {"intent": created, "understood": draft.model_dump(mode="json")}
 
 
-@app.delete("/api/intents/{intent_id}", status_code=204)
-async def delete_intent(intent_id: str, db: AsyncSession = Depends(session)) -> None:
+@app.delete("/api/intents/{intent_id}")
+async def delete_intent(intent_id: str, db: AsyncSession = Depends(session)) -> Response:
     row = await db.get(IntentRow, intent_id)
     if row is None:
         raise HTTPException(status_code=404, detail=f"no intent {intent_id!r}")
     await db.delete(row)
     await db.commit()
     await _replan(db)
+    return Response(status_code=204)
 
 
 @app.put("/api/busy", status_code=200)
