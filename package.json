@@ -27,12 +27,12 @@
     "dev:api": "cd services/api && .venv/bin/python -m uvicorn horolog.api:app --reload --port ${HOROLOG_PORT:-8000}",
     "dev:web": "cd apps/web && npm run dev",
     "setup": "node scripts/setup.mjs",
-    "test": "cd services/api && .venv/bin/python -m pytest -q",
+    "test": "npm run test:launcher && cd services/api && .venv/bin/python -m pytest -q",
+    "test:launcher": "node --test scripts/dev-env.test.mjs",
     "bench": "cd services/api && .venv/bin/python -m horolog.bench",
-    "check": "npm run check:api && npm run check:web",
+    "check": "npm run test:launcher && npm run check:api && npm run check:web",
     "check:api": "cd services/api && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy horolog && .venv/bin/python -m pytest -q",
     "check:web": "cd apps/web && npm run typecheck && npm run build",
     "clean": "rm -rf apps/web/.next services/api/.venv services/api/*.db"
   }
 }
-

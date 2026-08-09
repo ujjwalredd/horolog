@@ -13,6 +13,14 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# The documented setup keeps `.env` at the repository root, while every API
+# command (`npm run dev`, `npm run test`, and the manual uvicorn command) runs
+# with `services/api` as its working directory. Pydantic otherwise only looks
+# in that working directory, so OAuth client credentials in the documented
+# file were silently ignored.
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+ENV_FILES = (PROJECT_ROOT / ".env", Path(".env"))
+
 
 def host_timezone() -> str:
     """The machine's IANA zone, falling back to UTC.
@@ -44,7 +52,7 @@ def host_timezone() -> str:
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="HOROLOG_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="HOROLOG_", env_file=ENV_FILES, extra="ignore")
 
     database_url: str = "sqlite+aiosqlite:///./horolog.db"
     """Any SQLAlchemy async URL. SQLite for a single-user self-host, Postgres
