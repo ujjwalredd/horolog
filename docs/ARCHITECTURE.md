@@ -1,5 +1,7 @@
 # Architecture
 
+![Horolog System & Interface](hero.png)
+
 ## The one idea
 
 Calendar tools usually model time as *fixed blocks you place manually*. Horolog

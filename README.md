@@ -5,6 +5,8 @@
 [![Next.js 15](https://img.shields.io/badge/Next.js-15-000000.svg?logo=next.js&logoColor=white)](apps/web/package.json)
 [![CI Status](https://img.shields.io/github/actions/workflow/status/ujjwalredd/horolog/ci.yml?branch=main&label=CI)](.github/workflows/ci.yml)
 
+![Horolog Interface Banner](docs/hero.png)
+
 **An open-source, self-hosted AI calendar that defends your time.**
 
 Horolog places focus time, habits and tasks around the meetings you actually
