@@ -76,6 +76,21 @@ services:
       HOROLOG_TIMEZONE: ${HOROLOG_TIMEZONE:-UTC}
       HOROLOG_HORIZON_DAYS: ${HOROLOG_HORIZON_DAYS:-21}
       HOROLOG_CORS_ORIGINS: '["http://localhost:3000"]'
+      # Where a provider's consent screen sends the browser back to — the
+      # loopback-bound host port below, by default. Override both for a real
+      # deployment; see .env.example.
+      HOROLOG_PUBLIC_API_URL: ${HOROLOG_PUBLIC_API_URL:-http://localhost:8000}
+      HOROLOG_PUBLIC_WEB_URL: ${HOROLOG_PUBLIC_WEB_URL:-http://localhost:3000}
+      HOROLOG_GOOGLE_CLIENT_ID: ${HOROLOG_GOOGLE_CLIENT_ID:-}
+      HOROLOG_GOOGLE_CLIENT_SECRET: ${HOROLOG_GOOGLE_CLIENT_SECRET:-}
+      HOROLOG_OUTLOOK_CLIENT_ID: ${HOROLOG_OUTLOOK_CLIENT_ID:-}
+      HOROLOG_OUTLOOK_CLIENT_SECRET: ${HOROLOG_OUTLOOK_CLIENT_SECRET:-}
+      HOROLOG_LINEAR_CLIENT_ID: ${HOROLOG_LINEAR_CLIENT_ID:-}
+      HOROLOG_LINEAR_CLIENT_SECRET: ${HOROLOG_LINEAR_CLIENT_SECRET:-}
+      HOROLOG_TODOIST_CLIENT_ID: ${HOROLOG_TODOIST_CLIENT_ID:-}
+      HOROLOG_TODOIST_CLIENT_SECRET: ${HOROLOG_TODOIST_CLIENT_SECRET:-}
+      HOROLOG_GITHUB_CLIENT_ID: ${HOROLOG_GITHUB_CLIENT_ID:-}
+      HOROLOG_GITHUB_CLIENT_SECRET: ${HOROLOG_GITHUB_CLIENT_SECRET:-}
     volumes:
       - api-data:/app/data
     ports:
@@ -86,12 +101,14 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile.web
+      args:
+        # A build arg, not a runtime `environment:` — Next.js evaluates
+        # `rewrites()` once at `npm run build` and bakes the result into
+        # `.next/`; `next start` never re-reads it, so setting this as a
+        # runtime env var here would silently do nothing.
+        HOROLOG_API_URL: http://api:8000
     depends_on:
       api: { condition: service_healthy }
-    environment:
-      # Server-side rewrite target. The browser only ever talks to the web
-      # origin, so there is no CORS and SSE needs no preflight.
-      HOROLOG_API_URL: http://api:8000
     ports:
       - "3000:3000"
     restart: unless-stopped

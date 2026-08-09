@@ -2,18 +2,83 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Glyph, KIND_LABEL } from "@/app/components/Glyph";
-import { Grid, PRIORITY_LABEL, RULE } from "@/app/components/Grid";
+import { PRIORITY_LABEL, RULE } from "@/app/components/Grid";
 import { Shell } from "@/app/components/Shell";
-import { api, formatDuration, minutesBetween, type Plan } from "@/app/lib/api";
-import { ChevronLeft, ChevronRight, Download, AlertTriangle, Info, Sparkles } from "lucide-react";
+import { api, formatDuration, minutesBetween, type Plan, type Block, type Busy } from "@/app/lib/api";
+import { EventManager, type Event } from "@/components/ui/event-manager";
+import {
+  Download,
+  AlertTriangle,
+  Sparkles,
+} from "lucide-react";
 
-const VISIBLE_DAYS = 7;
+/** Map backend priority number to EventManager color values */
+const PRIORITY_COLOR: Record<number, string> = {
+  1: "blue",
+  2: "purple",
+  3: "green",
+  4: "orange",
+};
+
+/** The default palette plus one extra: real external events are locked and
+ *  need a colour no priority uses, so they read as visually distinct at a
+ *  glance rather than as a fifth "normal" block. */
+const COLORS = [
+  { name: "Blue", value: "blue", bg: "bg-blue-500", text: "text-blue-700" },
+  { name: "Green", value: "green", bg: "bg-green-500", text: "text-green-700" },
+  { name: "Purple", value: "purple", bg: "bg-purple-500", text: "text-purple-700" },
+  { name: "Orange", value: "orange", bg: "bg-orange-500", text: "text-orange-700" },
+  { name: "Slate", value: "slate", bg: "bg-slate-500", text: "text-slate-700" },
+];
+
+const EXTERNAL_PREFIX = "external-";
+
+function kindToCategory(kind: string): string {
+  return kind.charAt(0).toUpperCase() + kind.slice(1);
+}
+
+/** Convert backend Block[] to EventManager Event[] */
+function blocksToEvents(blocks: Block[]): Event[] {
+  return blocks.map((block) => {
+    const tags: string[] = [PRIORITY_LABEL[block.priority]];
+    if (block.moved_from !== null && block.moved_from !== block.start) {
+      tags.push("Moved");
+    }
+    if (block.energy) {
+      tags.push(block.energy.charAt(0).toUpperCase() + block.energy.slice(1) + " Energy");
+    }
+    return {
+      id: `${block.intent_id}-${block.occurrence}`,
+      title: block.title,
+      description: `${KIND_LABEL[block.kind]} · Chunk ${block.chunk} · ${formatDuration(minutesBetween(block.start, block.end))}`,
+      startTime: new Date(block.start),
+      endTime: new Date(block.end),
+      color: PRIORITY_COLOR[block.priority] || "green",
+      category: kindToCategory(block.kind),
+      tags,
+    };
+  });
+}
+
+/** Real, immovable commitments — meetings, decompression buffers, accepted
+ *  bookings. Rendered read-only: nothing the solver placed may ever overlap
+ *  these, and the planner has to show *why* rather than leave a silent gap. */
+function busyToEvents(busy: Busy[]): Event[] {
+  return busy.map((event, index) => ({
+    id: `${EXTERNAL_PREFIX}${index}`,
+    title: event.label || "Busy",
+    description: `External · ${event.source}`,
+    startTime: new Date(event.start),
+    endTime: new Date(event.end),
+    color: "slate",
+    category: "External",
+    tags: ["Locked"],
+  }));
+}
 
 export default function Planner() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [weekOffset, setWeekOffset] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -28,17 +93,6 @@ export default function Planner() {
     void load();
   }, [load]);
 
-  const days = useMemo(() => {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    start.setDate(start.getDate() + weekOffset * VISIBLE_DAYS);
-    return Array.from({ length: VISIBLE_DAYS }, (_, i) => {
-      const day = new Date(start);
-      day.setDate(start.getDate() + i);
-      return day;
-    });
-  }, [weekOffset]);
-
   const scheduledMinutes = useMemo(
     () => plan?.blocks.reduce((sum, b) => sum + minutesBetween(b.start, b.end), 0) ?? 0,
     [plan],
@@ -49,10 +103,49 @@ export default function Planner() {
     [plan],
   );
 
+  const calendarEvents = useMemo(
+    () => [...blocksToEvents(plan?.blocks ?? []), ...busyToEvents(plan?.busy ?? [])],
+    [plan],
+  );
+
+  const handleEventCreate = useCallback(
+    async (event: Omit<Event, "id">) => {
+      try {
+        const durationMinutes = Math.round(
+          (event.endTime.getTime() - event.startTime.getTime()) / 60000,
+        );
+        const text = `${event.title} for ${durationMinutes} minutes`;
+        await api.capture(text);
+        await load();
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "Failed to create event.");
+      }
+    },
+    [load],
+  );
+
+  const handleEventDelete = useCallback(
+    async (id: string) => {
+      if (id.startsWith(EXTERNAL_PREFIX)) {
+        setError("That's a real calendar event, not one Horolog placed — remove it at the source and re-sync.");
+        return;
+      }
+      try {
+        const parts = id.split("-");
+        const intentId = parts.length > 1 ? parts.slice(0, -1).join("-") : parts[0] ?? id;
+        await api.remove(intentId);
+        await load();
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "Failed to delete event.");
+      }
+    },
+    [load],
+  );
+
   return (
     <Shell onPlanChange={load}>
-      <main className="mx-auto max-w-[1280px] px-6 py-8">
-        {/* Header Bar */}
+      <main className="mx-auto max-w-[1440px] px-6 py-8">
+        {/* Header */}
         <header className="mb-7 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-[28px] font-bold text-fg">Planner</h1>
@@ -71,43 +164,13 @@ export default function Planner() {
             </p>
           </div>
 
-          {/* Actions & Segmented Control */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center rounded-xl border border-black/[0.08] bg-surface p-1 shadow-sm">
-              <button
-                type="button"
-                onClick={() => setWeekOffset((w) => w - 1)}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-sunk hover:text-fg"
-                aria-label="Previous week"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setWeekOffset(0)}
-                disabled={weekOffset === 0}
-                className="h-8 rounded-lg px-3 text-[13px] font-medium transition-colors hover:bg-sunk disabled:text-fg-subtle"
-              >
-                Today
-              </button>
-              <button
-                type="button"
-                onClick={() => setWeekOffset((w) => w + 1)}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-sunk hover:text-fg"
-                aria-label="Next week"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-
-            <a
-              href="/api/plan.ics"
-              className="inline-flex h-9.5 items-center gap-1.5 rounded-xl border border-black/[0.08] bg-surface px-4 text-[13px] font-semibold text-fg shadow-sm transition-all duration-150 hover:bg-sunk hover:shadow-md"
-            >
-              <Download size={14} className="text-fg-muted" />
-              Export .ics
-            </a>
-          </div>
+          <a
+            href="/api/plan.ics"
+            className="inline-flex h-9.5 items-center gap-1.5 rounded-xl border border-black/[0.08] bg-surface px-4 text-[13px] font-semibold text-fg shadow-sm transition-all duration-150 hover:bg-sunk hover:shadow-md"
+          >
+            <Download size={14} className="text-fg-muted" />
+            Export .ics
+          </a>
         </header>
 
         {error && (
@@ -122,19 +185,21 @@ export default function Planner() {
           </div>
         )}
 
+        {/* Calendar + Sidebar */}
         <div className="grid gap-6 lg:grid-cols-[1fr_270px]">
-          {/* Main Grid */}
-          <section id="planner" aria-label="Week grid">
-            <Grid
-              days={days}
-              blocks={plan?.blocks ?? []}
-              busy={plan?.busy ?? []}
-              selected={selected}
-              onSelect={setSelected}
+          <section aria-label="Calendar view">
+            <EventManager
+              events={calendarEvents}
+              onEventCreate={handleEventCreate}
+              onEventDelete={handleEventDelete}
+              categories={["Task", "Habit", "Focus", "Buffer", "Meeting", "External"]}
+              availableTags={["Critical", "High", "Normal", "Low", "Moved", "Locked", "High Energy", "Medium Energy", "Low Energy"]}
+              colors={COLORS}
+              defaultView="week"
+              className="min-h-[600px]"
             />
           </section>
 
-          {/* Right Sidebar Info Cards */}
           <aside className="space-y-4">
             {movedCount > 0 && (
               <Panel title="Shift Stability">

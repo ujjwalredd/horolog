@@ -6,7 +6,7 @@ import { Hexagon } from "lucide-react"
 import { motion } from "motion/react"
 import { Button } from "@/components/ui/button"
 
-export function Navbar() {
+export function Navbar({ signInHref = "/login" }: { signInHref?: string }) {
   return (
     <motion.header 
       initial={{ y: -100 }}
@@ -21,13 +21,19 @@ export function Navbar() {
         </Link>
         <div className="flex items-center gap-6">
           <Link
+            href="#agents"
+            className="hidden text-[14px] font-medium text-muted-foreground transition-colors hover:text-primary sm:block tracking-wide"
+          >
+            Agents
+          </Link>
+          <Link
             href="#manifesto"
             className="hidden text-[14px] font-medium text-muted-foreground transition-colors hover:text-primary sm:block tracking-wide"
           >
             Features
           </Link>
           <Button variant="default" className="rounded-full px-6" asChild>
-            <Link href="/login">Sign In</Link>
+            <Link href={signInHref}>Sign In</Link>
           </Button>
         </div>
       </div>

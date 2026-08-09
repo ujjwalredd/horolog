@@ -11,6 +11,13 @@ COPY apps/web/package.json apps/web/package-lock.json* ./
 RUN npm ci --ignore-scripts || npm install --ignore-scripts
 COPY apps/web ./
 ENV NEXT_TELEMETRY_DISABLED=1
+
+# `rewrites()` in next.config.mjs is evaluated here, at build time, and its
+# result is baked into `.next/` — `next start` does not re-run it, so setting
+# HOROLOG_API_URL only in docker-compose's runtime `environment:` silently has
+# no effect. It has to be a build arg instead.
+ARG HOROLOG_API_URL=http://localhost:8000
+ENV HOROLOG_API_URL=$HOROLOG_API_URL
 RUN npm run build
 
 # ---- runtime -------------------------------------------------------------
@@ -23,12 +30,15 @@ RUN addgroup -g 10001 nodejs && adduser -u 10001 -G nodejs -S nextjs
 COPY --from=deps    --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/.next        ./.next
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./
-COPY --from=builder --chown=nextjs:nodejs /app/next.config.ts ./
+COPY --from=builder --chown=nextjs:nodejs /app/next.config.mjs ./
 
 USER nextjs
 EXPOSE 3000
 
+# Checks the proxy, not just that the Node process answers: a container that
+# serves pages but can't reach the API is not actually healthy, and pinging
+# only `/` reported "healthy" through exactly that failure once already.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:3000/ >/dev/null || exit 1
+  CMD wget -qO- http://127.0.0.1:3000/api/health | grep -q '"status":"ok"' || exit 1
 
 CMD ["npm", "run", "start"]

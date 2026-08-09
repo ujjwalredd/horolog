@@ -3,6 +3,7 @@ import { CheckCircle2, Hexagon } from "lucide-react"
 
 import { Navbar } from "@/components/ui/navbar"
 import { Hero05 } from "@/components/ui/hero-05"
+import { AgentsSection } from "@/components/ui/agents-section"
 import { BentoGrid } from "@/components/ui/bento-grid"
 import { TechnicalSection } from "@/components/ui/technical-section"
 import { WorkflowSection } from "@/components/ui/workflow-section"
@@ -32,10 +33,18 @@ const GithubIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
+const GITHUB_URL = "https://github.com/ujjwalredd/horolog"
+
+// Set by Vercel on every build and request there, never locally or in the
+// Docker image — this deployment has no backend behind it, so every button
+// that would otherwise open the app points at the source instead.
+const LANDING_ONLY = process.env.VERCEL === "1"
+const appHref = LANDING_ONLY ? GITHUB_URL : "/login"
+
 export default function Landing() {
   return (
     <div className="bg-background text-foreground min-h-screen">
-      <Navbar />
+      <Navbar signInHref={appHref} />
 
       <Hero05
         tagline="The Engine of Time"
@@ -46,8 +55,8 @@ export default function Landing() {
         animation="subtle"
         primaryCTA={{
           ctaEnabled: true,
-          text: 'Enter the Planner',
-          link: '/login',
+          text: LANDING_ONLY ? 'View on GitHub' : 'Enter the Planner',
+          link: appHref,
           variant: 'default',
         }}
         secondaryCTA={{
@@ -70,14 +79,15 @@ export default function Landing() {
       </section>
 
       <WorkflowSection />
+      <AgentsSection />
       <TechnicalSection />
       <BentoGrid />
       <FaqSection />
 
-      <CtaSection 
+      <CtaSection
         title="Reclaim your sovereignty."
         description="Download the engine. Run it on your hardware. Stop renting your calendar."
-        link="/login"
+        link={appHref}
       />
 
       <Footer

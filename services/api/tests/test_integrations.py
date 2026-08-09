@@ -190,6 +190,30 @@ async def test_double_booking_is_refused(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_booking_is_rate_limited_per_caller(client: AsyncClient) -> None:
+    """A booking link is handed to strangers and writes to the calendar on
+    every call — the one endpoint in this API where that combination matters
+    enough to floor it, even though nothing here has accounts to protect."""
+    from horolog.api import _booking_limiter
+
+    _booking_limiter._hits.clear()
+    slots = (await client.get("/api/availability?minutes=15&days=5")).json()
+    assert len(slots) >= 6, "the fixture needs at least 6 distinct openings"
+
+    statuses = [
+        (
+            await client.post(
+                "/api/book", json={"name": "Spammer", "start": slot["start"], "minutes": 15}
+            )
+        ).status_code
+        for slot in slots[:6]
+    ]
+
+    assert statuses[:5] == [201, 201, 201, 201, 201], statuses
+    assert statuses[5] == 429, "a sixth attempt within the window must be throttled"
+
+
+@pytest.mark.asyncio
 async def test_an_event_before_today_does_not_brick_the_instance(client: AsyncClient) -> None:
     """A yesterday event stored a negative slot, which `BusyInterval` rejects -
     so every later read of the plan raised on the way out and the row could only
@@ -349,3 +373,7 @@ async def test_linear_graphql_errors_surface_as_a_readable_failure(
     refused = await client.post("/api/sync/linear", json={"api_key": "bad"})
     assert refused.status_code == 502
     assert "invalid api key" in refused.json()["detail"]
+
+    # Todoist and GitHub coverage (fetch shape, sync endpoints, the
+    # OAuth-fallback path) lives in test_oauth_and_sync.py, alongside the
+    # calendar integrations that share its mocking helpers.

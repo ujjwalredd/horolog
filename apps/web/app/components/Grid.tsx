@@ -170,38 +170,68 @@ export function Grid({ days, blocks, busy, selected, onSelect }: GridProps) {
                   const moved = block.moved_from !== null && block.moved_from !== block.start;
                   const isSelected = selected === id;
 
+                  const isLinear = block.title.toLowerCase().includes("linear");
+                  const isGithub = block.title.toLowerCase().includes("github");
+                  const isTodoist = block.title.toLowerCase().includes("todoist");
+
                   return (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => onSelect(isSelected ? null : id)}
-                      style={{
-                        top,
-                        height,
-                        background: FILL[block.priority],
-                        borderLeft: `3px ${moved ? "dashed" : "solid"} ${RULE[block.priority]}`,
-                      }}
-                      className={`group absolute inset-x-1.5 z-10 cursor-pointer overflow-hidden rounded-block border border-indigo-200/50 px-2.5 py-1 text-left transition-all duration-200 ease-spring hover:scale-[1.01] hover:shadow-md ${
-                        isSelected ? "shadow-md ring-2 ring-secondary0" : "shadow-xs"
-                      } ${moved ? "settle" : ""}`}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span style={{ color: RULE[block.priority] }}>
-                          <Glyph kind={block.kind} size={13} />
-                        </span>
-                        <span className="truncate text-[12px] font-semibold text-fg leading-tight">
-                          {block.title}
-                        </span>
-                      </div>
-                      {height > 36 && (
-                        <div className="tabular mt-0.5 flex items-center gap-1 truncate text-[10px] font-medium text-fg-muted">
-                          <span>{clock(block.start)}</span>
-                          <span>·</span>
-                          <span>{formatDuration(minutes)}</span>
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => onSelect(isSelected ? null : id)}
+                        style={{
+                          top,
+                          height,
+                          background: FILL[block.priority],
+                          borderLeft: `3px ${moved ? "dashed" : "solid"} ${RULE[block.priority]}`,
+                        }}
+                        className={`group absolute inset-x-1.5 z-10 cursor-pointer overflow-hidden rounded-block border border-indigo-200/50 px-2.5 py-1 text-left transition-all duration-200 ease-spring hover:scale-[1.01] hover:shadow-md ${
+                          isSelected ? "shadow-md ring-2 ring-secondary0" : "shadow-xs"
+                        } ${moved ? "settle" : ""}`}
+                      >
+                        <div className="flex items-center justify-between gap-1.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span style={{ color: RULE[block.priority] }}>
+                              <Glyph kind={block.kind} size={13} />
+                            </span>
+                            <span className="truncate text-[12px] font-semibold text-fg leading-tight">
+                              {block.title}
+                            </span>
+                          </div>
+                          {(isLinear || isGithub || isTodoist || block.energy === "high") && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              {isLinear && (
+                                <span className="rounded bg-indigo-500/10 px-1 py-0.2 text-[9px] font-bold text-indigo-600">
+                                  Linear
+                                </span>
+                              )}
+                              {isGithub && (
+                                <span className="rounded bg-slate-500/10 px-1 py-0.2 text-[9px] font-bold text-slate-700">
+                                  GitHub
+                                </span>
+                              )}
+                              {isTodoist && (
+                                <span className="rounded bg-red-500/10 px-1 py-0.2 text-[9px] font-bold text-red-600">
+                                  Todoist
+                                </span>
+                              )}
+                              {block.energy === "high" && (
+                                <span className="rounded bg-amber-500/10 px-1 py-0.2 text-[9px] font-bold text-amber-600" title="High Energy Focus">
+                                  ⚡
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </button>
-                  );
+                        {height > 36 && (
+                          <div className="tabular mt-0.5 flex items-center gap-1 truncate text-[10px] font-medium text-fg-muted">
+                            <span>{clock(block.start)}</span>
+                            <span>·</span>
+                            <span>{formatDuration(minutes)}</span>
+                          </div>
+                        )}
+                      </button>
+                    );
                 })}
               </div>
             );

@@ -38,7 +38,7 @@ class CalendarProvider(Protocol):
         ...
 
 
-def _as_datetime(value: object, zone: ZoneInfo) -> datetime | None:
+def as_datetime(value: object, zone: ZoneInfo) -> datetime | None:
     """Normalise an icalendar date/datetime to an aware datetime.
 
     All-day events arrive as `date`, not `datetime`, and a naive comparison
@@ -52,7 +52,7 @@ def _as_datetime(value: object, zone: ZoneInfo) -> datetime | None:
     return None
 
 
-def _to_interval(
+def to_interval(
     source_id: str, label: str, start: datetime, end: datetime, origin: datetime, horizon: int
 ) -> BusyInterval | None:
     """Clip an event to the horizon and convert it to slots, or drop it."""
@@ -93,8 +93,8 @@ def parse_ics(text: str, origin: datetime, horizon_days: int, zone: ZoneInfo) ->
             continue
         if str(event.get("STATUS", "")).upper() == "CANCELLED":
             continue
-        start = _as_datetime(getattr(event.get("DTSTART"), "dt", None), zone)
-        finish = _as_datetime(getattr(event.get("DTEND"), "dt", None), zone)
+        start = as_datetime(getattr(event.get("DTSTART"), "dt", None), zone)
+        finish = as_datetime(getattr(event.get("DTEND"), "dt", None), zone)
         if start is None:
             continue
         if finish is None:
@@ -103,7 +103,7 @@ def parse_ics(text: str, origin: datetime, horizon_days: int, zone: ZoneInfo) ->
                 start + duration if isinstance(duration, timedelta) else start + timedelta(hours=1)
             )
         uid = str(event.get("UID", f"ics-{index}"))
-        interval = _to_interval(
+        interval = to_interval(
             f"{uid}-{index}", str(event.get("SUMMARY", "Busy")), start, finish, origin, horizon_days
         )
         if interval:
@@ -215,14 +215,14 @@ class CalDAVProvider:
                         continue
                     if str(component.get("TRANSP", "OPAQUE")).upper() == "TRANSPARENT":
                         continue
-                    start = _as_datetime(getattr(component.get("DTSTART"), "dt", None), self._zone)
-                    finish = _as_datetime(getattr(component.get("DTEND"), "dt", None), self._zone)
+                    start = as_datetime(getattr(component.get("DTSTART"), "dt", None), self._zone)
+                    finish = as_datetime(getattr(component.get("DTEND"), "dt", None), self._zone)
                     if start is None:
                         continue
                     if finish is None:
                         finish = start + timedelta(hours=1)
                     uid = str(component.get("UID", f"caldav-{index}"))
-                    interval = _to_interval(
+                    interval = to_interval(
                         f"{uid}-{index}",
                         str(component.get("SUMMARY", "Busy")),
                         start,

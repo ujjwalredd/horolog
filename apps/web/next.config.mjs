@@ -1,9 +1,9 @@
 import path from "node:path";
-import type { NextConfig } from "next";
 
 const api = process.env.HOROLOG_API_URL ?? "http://localhost:8000";
 
-const config: NextConfig = {
+/** @type {import('next').NextConfig} */
+const config = {
   // Pin the workspace root. Without this Next walks up looking for a lockfile
   // and can land on one in the home directory, which makes it trace the wrong
   // tree and print a warning on every start.

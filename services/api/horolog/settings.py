@@ -80,6 +80,30 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["http://localhost:3000"]
 
+    public_api_url: str = "http://localhost:8000"
+    """Where the browser can reach this API directly — not through the Next.js
+    proxy. Only used to build OAuth redirect URLs: the provider's consent
+    screen redirects the browser straight back here, bypassing the frontend
+    entirely, so this has to be a real address rather than an internal Docker
+    hostname. The default matches `docker-compose`'s published port; set it to
+    your real domain for anything beyond one machine."""
+
+    public_web_url: str = "http://localhost:3000"
+    """Where the browser reaches the web app, for the same reason: once an
+    OAuth round trip finishes here on the API, the user has to be sent back to
+    a page that exists."""
+
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    outlook_client_id: str = ""
+    outlook_client_secret: str = ""
+    linear_client_id: str = ""
+    linear_client_secret: str = ""
+    todoist_client_id: str = ""
+    todoist_client_secret: str = ""
+    github_client_id: str = ""
+    github_client_secret: str = ""
+
     @field_validator("timezone")
     @classmethod
     def _known_zone(cls, value: str) -> str:

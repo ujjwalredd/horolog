@@ -63,6 +63,27 @@ class PlanRow(Base):
     )
 
 
+class OAuthTokenRow(Base):
+    """A connected account's access token.
+
+    Kept server-side and never handed to the browser: a token riding in a
+    redirect URL lands in browser history, `Referer` headers and reverse-proxy
+    logs, and a token in `localStorage` is readable by anything that can run a
+    script on the page. Neither is necessary when the backend can hold the
+    token itself and let the frontend simply ask it to sync.
+    """
+
+    __tablename__ = "oauth_tokens"
+
+    provider: Mapped[str] = mapped_column(String(16), primary_key=True)
+    access_token: Mapped[str] = mapped_column(Text)
+    refresh_token: Mapped[str | None] = mapped_column(Text, default=None)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    connected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+
 _engine = create_async_engine(settings().database_url, future=True)
 _session_factory = async_sessionmaker(_engine, expire_on_commit=False)
 

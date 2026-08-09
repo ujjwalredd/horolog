@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from horolog.domain.intent import Intent, IntentKind, Priority
+from horolog.domain.intent import EnergyLevel, Intent, IntentKind, Priority
 from horolog.domain.time import SLOT_MINUTES, SLOTS_PER_DAY, day_start
 
 MAX_CHUNKS_PER_REQUIREMENT = 16
@@ -46,6 +46,7 @@ class Requirement(BaseModel):
     kind: IntentKind
     occurrence: int
     priority: Priority
+    energy: EnergyLevel | None = None
     required_slots: int = Field(gt=0)
     min_chunk: int = Field(gt=0)
     max_chunk: int = Field(gt=0)
@@ -123,6 +124,7 @@ def expand(intent: Intent, horizon_slots: int) -> list[Requirement]:
             kind=intent.kind,
             occurrence=occurrence,
             priority=intent.priority,
+            energy=intent.energy,
             required_slots=intent.required_slots,
             min_chunk=intent.min_chunk_slots,
             max_chunk=intent.max_chunk_slots,

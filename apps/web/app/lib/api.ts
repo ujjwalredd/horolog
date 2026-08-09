@@ -7,12 +7,14 @@
 
 export type IntentKind = "task" | "habit" | "focus" | "buffer" | "meeting";
 export type Priority = 1 | 2 | 3 | 4;
+export type EnergyLevel = "high" | "medium" | "low";
 
 export interface Block {
   intent_id: string;
   title: string;
   kind: IntentKind;
   priority: Priority;
+  energy?: EnergyLevel;
   occurrence: number;
   chunk: number;
   start: string;
@@ -50,6 +52,7 @@ export interface Intent {
   title: string;
   kind: IntentKind;
   priority: Priority;
+  energy?: EnergyLevel;
   minutes_per_period: number;
   period_days: number | null;
   min_chunk_minutes: number;
@@ -81,10 +84,22 @@ export const api = {
   resolve: () => request<Plan>("/api/plan/solve", { method: "POST" }),
   intents: () => request<Intent[]>("/api/intents"),
   remove: (id: string) => request<void>(`/api/intents/${id}`, { method: "DELETE" }),
-  capture: (text: string) =>
+  capture: (text: string, provider?: string, model?: string, apiKey?: string) =>
     request<{ intent: Intent }>("/api/capture", {
       method: "POST",
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, provider, model, api_key: apiKey }),
+    }),
+  createIntent: (intent: {
+    title: string;
+    kind?: IntentKind;
+    priority?: Priority;
+    minutes_per_period: number;
+    min_chunk_minutes?: number;
+    max_chunk_minutes?: number;
+  }) =>
+    request<Intent>("/api/intents", {
+      method: "POST",
+      body: JSON.stringify(intent),
     }),
   setBusy: (events: Omit<Busy, "source">[]) =>
     request<{ events: number; blocks: number }>("/api/busy", {
@@ -139,6 +154,10 @@ export const analytics = {
   get: () => request<Analytics>("/api/analytics"),
 };
 
+/** Every OAuth-connectable provider. Google/Outlook are calendars — they
+ *  land in the busy mirror; the other three are trackers — they land as tasks. */
+export type Provider = "google" | "outlook" | "linear" | "todoist" | "github";
+
 export const sync = {
   ics: (url: string) =>
     request<{ events: number; blocks: number }>("/api/sync/ics", {
@@ -150,6 +169,33 @@ export const sync = {
       method: "POST",
       body: JSON.stringify({ url, username, password }),
     }),
+  // A pasted key is optional on all three trackers — omitted, the API falls
+  // back to whatever OAuth connection is already stored server-side.
+  linear: (apiKey = "") =>
+    request<{ issues: number; blocks: number }>("/api/sync/linear", {
+      method: "POST",
+      body: JSON.stringify({ api_key: apiKey }),
+    }),
+  todoist: (token = "") =>
+    request<{ tasks: number; blocks: number }>("/api/sync/todoist", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    }),
+  github: (token = "") =>
+    request<{ issues: number; blocks: number }>("/api/sync/github", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    }),
+  google: () => request<{ events: number; blocks: number }>("/api/sync/google", { method: "POST" }),
+  outlook: () =>
+    request<{ events: number; blocks: number }>("/api/sync/outlook", { method: "POST" }),
+};
+
+export const connections = {
+  /** Which providers have a live, usable OAuth connection right now. */
+  list: () => request<Record<Provider, boolean>>("/api/connections"),
+  disconnect: (provider: Provider) =>
+    request<void>(`/api/connections/${provider}`, { method: "DELETE" }),
 };
 
 // --------------------------------------------------------------- booking

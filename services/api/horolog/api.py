@@ -9,20 +9,24 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
+from urllib.parse import urlencode
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from pydantic import AfterValidator, BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
+from horolog import oauth
 from horolog.analytics import Analytics, analyse
 from horolog.capture import capture, to_payload
 from horolog.db import (
@@ -35,7 +39,7 @@ from horolog.db import (
     session,
 )
 from horolog.domain.events import BusyInterval
-from horolog.domain.intent import DailyWindow, Intent, IntentKind, Priority
+from horolog.domain.intent import DailyWindow, EnergyLevel, Intent, IntentKind, Priority
 from horolog.domain.plan import Plan
 from horolog.domain.time import (
     SLOT_MINUTES,
@@ -44,8 +48,12 @@ from horolog.domain.time import (
     minutes_to_slots,
     to_slot,
 )
+from horolog.integrations.github import GithubError, fetch_github_issues
+from horolog.integrations.google_calendar import GoogleCalendarProvider
 from horolog.integrations.linear import LinearError, fetch_linear_issues
-from horolog.llm import ExtractionFailed
+from horolog.integrations.outlook_calendar import OutlookCalendarProvider
+from horolog.integrations.todoist import TodoistError, fetch_todoist_tasks
+from horolog.llm import AnthropicProvider, ExtractionFailed, OpenAICompatible, Provider
 from horolog.providers import (
     BUFFER_SOURCE,
     CalDAVProvider,
@@ -119,6 +127,7 @@ class IntentIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     kind: IntentKind = IntentKind.TASK
     priority: Priority = Priority.P3
+    energy: EnergyLevel | None = None
     minutes_per_period: int = Field(gt=0)
     period_days: int | None = Field(default=None, gt=0)
     min_chunk_minutes: int = Field(default=30, gt=0)
@@ -148,6 +157,7 @@ class IntentIn(BaseModel):
             kind=self.kind,
             title=self.title,
             priority=self.priority,
+            energy=self.energy,
             minutes_per_period=self.minutes_per_period,
             period_days=self.period_days,
             min_chunk_minutes=self.min_chunk_minutes,
@@ -185,6 +195,7 @@ class BlockOut(BaseModel):
     title: str
     kind: IntentKind
     priority: Priority
+    energy: EnergyLevel | None = None
     occurrence: int
     chunk: int
     start: datetime
@@ -294,6 +305,9 @@ async def create_intent(body: IntentIn, db: AsyncSession = Depends(session)) -> 
 
 class CaptureIn(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
+    model: str | None = None
+    provider: str | None = None
+    api_key: str | None = None
 
 
 @app.post("/api/capture", status_code=201)
@@ -306,8 +320,21 @@ async def capture_intent(body: CaptureIn, db: AsyncSession = Depends(session)) -
     placer, so the worst a bad extraction can do is create a wrong-looking
     intent the user can delete.
     """
+    custom_provider: Provider | None = None
+    if body.provider and body.provider != "default" and body.model:
+        timeout = settings().llm_timeout_s
+        if body.provider == "anthropic":
+            custom_provider = AnthropicProvider(body.model, body.api_key or "", timeout)
+        else:
+            base_url = (
+                "https://api.openai.com/v1"
+                if body.provider == "openai"
+                else settings().llm_base_url
+            )
+            custom_provider = OpenAICompatible(base_url, body.model, body.api_key or "", timeout)
+
     try:
-        draft = await capture(body.text)
+        draft = await capture(body.text, provider=custom_provider)
     except ExtractionFailed as exc:
         # Explicitly not a 500: the request was fine, the model could not read
         # it. The UI falls back to the manual form on this status.
@@ -428,13 +455,30 @@ async def sync_caldav(body: CalDavSyncIn, db: AsyncSession = Depends(session)) -
     return await _mirror(db, provider, "caldav")
 
 
+LINEAR_PREFIX = "linear:"
+TODOIST_PREFIX = "todoist:"
+GITHUB_PREFIX = "github:"
+
+
 class LinearSyncIn(BaseModel):
-    api_key: str = Field(min_length=1, max_length=200)
+    api_key: str = Field(default="", max_length=200)
+    """A personal API key, pasted directly. Empty uses the stored OAuth
+    connection instead — either path is a legitimate way to authenticate."""
     priority: Priority = Priority.P2
     max_chunk_minutes: int = Field(default=120, gt=0)
 
 
-LINEAR_PREFIX = "linear:"
+async def _resolve_credential(db: AsyncSession, provider: str, pasted: str) -> str:
+    """A pasted key wins; otherwise fall back to a stored OAuth connection."""
+    if pasted:
+        return pasted
+    token = await oauth.valid_access_token(db, settings(), provider)
+    if not token:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{provider} is not connected — paste a key or connect it in Calendars & Sync",
+        )
+    return token
 
 
 @app.post("/api/sync/linear")
@@ -445,8 +489,9 @@ async def sync_linear(body: LinearSyncIn, db: AsyncSession = Depends(session)) -
     moved out of progress has to stop consuming time, and reusing the key keeps
     a re-sync from shuffling everything that did not change.
     """
+    api_key = await _resolve_credential(db, "linear", body.api_key)
     try:
-        issues = await fetch_linear_issues(body.api_key)
+        issues = await fetch_linear_issues(api_key)
     except LinearError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -469,6 +514,175 @@ async def sync_linear(body: LinearSyncIn, db: AsyncSession = Depends(session)) -
     await db.commit()
     plan = await _replan(db)
     return {"issues": len(issues), "blocks": len(plan.blocks)}
+
+
+class TokenSyncIn(BaseModel):
+    token: str = Field(default="", max_length=500)
+
+
+async def _sync_tasks(
+    db: AsyncSession, prefix: str, kind_label: str, tasks: list[tuple[str, str, Priority, int]]
+) -> int:
+    """Store a provider's tasks as intents under a stable id prefix.
+
+    Shared by Todoist and GitHub: both reduce to (id, title, priority,
+    minutes) tuples, so the storage half — replace-by-prefix, `to_domain`,
+    commit — does not need writing twice.
+    """
+    await db.execute(delete(IntentRow).where(IntentRow.id.startswith(prefix)))
+    base = origin()
+    for task_id, title, priority, minutes in tasks:
+        wire = IntentIn(
+            title=f"{kind_label}: {title}"[:200],
+            kind=IntentKind.TASK,
+            priority=priority,
+            minutes_per_period=minutes,
+            min_chunk_minutes=min(30, minutes),
+            max_chunk_minutes=minutes,
+        )
+        intent = wire.to_domain(f"{prefix}{task_id}", base)
+        db.add(IntentRow(id=intent.id, payload=intent.model_dump(mode="json")))
+    await db.commit()
+    return len(tasks)
+
+
+@app.post("/api/sync/todoist")
+async def sync_todoist(body: TokenSyncIn, db: AsyncSession = Depends(session)) -> dict[str, int]:
+    """Mirror uncompleted Todoist tasks as schedulable intents."""
+    token = await _resolve_credential(db, "todoist", body.token)
+    try:
+        tasks = await fetch_todoist_tasks(token)
+    except TodoistError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    count = await _sync_tasks(
+        db,
+        TODOIST_PREFIX,
+        "Todoist",
+        [(t.id, t.content, t.priority, t.minutes) for t in tasks],
+    )
+    plan = await _replan(db)
+    return {"tasks": count, "blocks": len(plan.blocks)}
+
+
+@app.post("/api/sync/github")
+async def sync_github(body: TokenSyncIn, db: AsyncSession = Depends(session)) -> dict[str, int]:
+    """Mirror assigned open GitHub issues as schedulable intents."""
+    token = await _resolve_credential(db, "github", body.token)
+    try:
+        issues = await fetch_github_issues(token)
+    except GithubError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    count = await _sync_tasks(
+        db,
+        GITHUB_PREFIX,
+        "GitHub",
+        [(i.id, f"#{i.number} {i.title}", Priority.P2, i.minutes) for i in issues],
+    )
+    plan = await _replan(db)
+    return {"issues": count, "blocks": len(plan.blocks)}
+
+
+@app.post("/api/sync/google")
+async def sync_google(db: AsyncSession = Depends(session)) -> dict[str, int]:
+    """Mirror real Google Calendar events for the connected account.
+
+    No body: the access token lives server-side (`/api/auth/google` put it
+    there), never in a request from the browser.
+    """
+    token = await _resolve_credential(db, "google", "")
+    provider = GoogleCalendarProvider(token, settings().zone)
+    return await _mirror(db, provider, "google")
+
+
+@app.post("/api/sync/outlook")
+async def sync_outlook(db: AsyncSession = Depends(session)) -> dict[str, int]:
+    """Mirror real Outlook / Microsoft 365 events for the connected account."""
+    token = await _resolve_credential(db, "outlook", "")
+    provider = OutlookCalendarProvider(token, settings().zone)
+    return await _mirror(db, provider, "outlook")
+
+
+# --------------------------------------------------------------------------
+# OAuth connections
+# --------------------------------------------------------------------------
+
+
+@app.get("/api/connections")
+async def list_connections(db: AsyncSession = Depends(session)) -> dict[str, bool]:
+    """Which providers have a stored, usable token — what the Connect page
+    renders as "Connected" instead of guessing from browser state."""
+    connected = await oauth.connected_providers(db)
+    return {provider: provider in connected for provider in oauth.PROVIDERS}
+
+
+@app.delete("/api/connections/{provider}")
+async def disconnect(provider: str, db: AsyncSession = Depends(session)) -> Response:
+    if provider not in oauth.PROVIDERS:
+        raise HTTPException(status_code=404, detail=f"unknown provider {provider!r}")
+    await oauth.forget_token(db, provider)
+    return Response(status_code=204)
+
+
+def _connect_redirect(web: str, **params: str) -> RedirectResponse:
+    """A redirect to the Connect page's status banner.
+
+    `error` in particular carries text from outside the process — the OAuth
+    provider's own callback query string, which anyone can hit directly with
+    any value they like, not only a real provider. Building the URL with an
+    f-string let that value break out of the query string; `urlencode` is what
+    keeps it confined to the `error` parameter's value.
+    """
+    return RedirectResponse(url=f"{web}/connect?{urlencode(params)}")
+
+
+@app.get("/api/auth/{provider}")
+async def auth_redirect(provider: str) -> RedirectResponse:
+    cfg = settings()
+    if provider not in oauth.PROVIDERS:
+        raise HTTPException(status_code=404, detail=f"unknown provider {provider!r}")
+
+    client_id, client_secret = oauth.client_credentials(cfg, provider)
+    if not client_id or not client_secret:
+        return _connect_redirect(
+            cfg.public_web_url, status="credentials_missing", provider=provider
+        )
+    state = oauth.new_state()
+    return RedirectResponse(url=oauth.authorize_url(cfg, provider, state))
+
+
+@app.get("/api/auth/callback/{provider}")
+async def auth_callback(
+    provider: str,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    db: AsyncSession = Depends(session),
+) -> RedirectResponse:
+    cfg = settings()
+    web = cfg.public_web_url
+    if provider not in oauth.PROVIDERS:
+        raise HTTPException(status_code=404, detail=f"unknown provider {provider!r}")
+    if error:
+        return _connect_redirect(web, status="error", error=error)
+    if not code or not state or not oauth.consume_state(state):
+        # A missing or already-used state is what a replayed or forged
+        # callback looks like — reject it rather than trust a bare code.
+        return _connect_redirect(
+            web, status="error", error="Invalid or expired authorization request"
+        )
+
+    try:
+        token = await oauth.exchange_code(cfg, provider, code)
+    except oauth.OAuthError as exc:
+        return _connect_redirect(web, status="error", error=str(exc))
+
+    await oauth.save_token(db, provider, token)
+    # The token stays server-side — never appended here, never handed to the
+    # browser. The frontend learns the connection succeeded and asks the
+    # relevant /api/sync/* endpoint to use it.
+    return _connect_redirect(web, status="success", provider=provider)
 
 
 # --------------------------------------------------------------------------
@@ -538,8 +752,43 @@ class BookIn(BaseModel):
     minutes: int = 30
 
 
+class _RateLimiter:
+    """A fixed window per key. Everything else here has no auth by design —
+    a self-hosted single-user tool has no accounts to protect — but a booking
+    link is deliberately the one URL meant to be handed to strangers, and
+    unlike the rest of the API it writes to the calendar on every call. That
+    combination is worth a floor.
+
+    ponytail: in-process, unbounded by IP count. Fine for what a booking page
+    actually receives; move to a real store if this ever runs multi-worker.
+    """
+
+    def __init__(self, limit: int, window_s: float) -> None:
+        self._limit = limit
+        self._window_s = window_s
+        self._hits: dict[str, list[float]] = {}
+
+    def allow(self, key: str) -> bool:
+        now = time.monotonic()
+        cutoff = now - self._window_s
+        recent = [t for t in self._hits.get(key, []) if t > cutoff]
+        if len(recent) >= self._limit:
+            self._hits[key] = recent
+            return False
+        recent.append(now)
+        self._hits[key] = recent
+        return True
+
+
+_booking_limiter = _RateLimiter(limit=5, window_s=600)
+"""5 bookings per IP per 10 minutes — enough for a real guest picking a slot,
+retrying after a race, and correcting a typo; not enough to fill a calendar."""
+
+
 @app.post("/api/book", status_code=201)
-async def book(body: BookIn, db: AsyncSession = Depends(session)) -> dict[str, Any]:
+async def book(
+    body: BookIn, request: Request, db: AsyncSession = Depends(session)
+) -> dict[str, Any]:
     """Accept a booking from a shared link.
 
     The booking lands in the busy mirror, not the intent list, because a guest's
@@ -547,6 +796,9 @@ async def book(body: BookIn, db: AsyncSession = Depends(session)) -> dict[str, A
     makes the surrounding flexible work reschedule around it instead of the
     other way round.
     """
+    client_ip = request.client.host if request.client else "unknown"
+    if not _booking_limiter.allow(client_ip):
+        raise HTTPException(status_code=429, detail="too many booking attempts, try again shortly")
     if not MIN_BOOKING_MINUTES <= body.minutes <= MAX_BOOKING_MINUTES:
         raise HTTPException(status_code=422, detail="unsupported meeting length")
 
@@ -704,6 +956,7 @@ async def _render(db: AsyncSession, plan: Plan) -> PlanOut:
                 title=titles[b.intent_id].title if b.intent_id in titles else b.intent_id,
                 kind=titles[b.intent_id].kind if b.intent_id in titles else IntentKind.TASK,
                 priority=b.priority,
+                energy=titles[b.intent_id].energy if b.intent_id in titles else None,
                 occurrence=b.occurrence,
                 chunk=b.chunk,
                 start=from_slot(b.start_slot, base),

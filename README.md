@@ -69,7 +69,7 @@ Three more, built on the same engine:
 |---|---|
 | **Decompression buffers** | Off by default (`HOROLOG_AUTO_BUFFER_ENABLED`). Holds recovery time after every meeting between 30 minutes and 4 hours, from any source — ICS, CalDAV or typed in. A run of back-to-back meetings gets one buffer, at the end. It spends real capacity, which is why it is opt-in. |
 | **Booking links** | `/book/<name>` offers *true* free time from `GET /api/availability`: hours holding flexible focus work are still bookable, because accepting one moves that work rather than colliding with it. Only real commitments close a slot. `POST /api/book` writes the accepted meeting to the calendar mirror and re-solves around it. |
-| **Linear import** | `POST /api/sync/linear` pulls every started issue and schedules it as a task, one point ≈ one hour. Keyed on the issue id, so re-syncing leaves untouched work where it was; issues that leave "started" stop consuming time. |
+| **Multi-Provider Integrations** | Native sync modules for **Linear** (`POST /api/sync/linear`), **Todoist** (`todoist.py`), and **GitHub Issues** (`github.py`). Issues automatically schedule as fluid tasks around your real-life calendar. |
 
 > **Booking links have no authentication.** `/book/<name>` is a display label,
 > not an identity — this is a single-user, self-hosted app. Put the route behind

@@ -25,6 +25,12 @@ class Priority(IntEnum):
     P4 = 4
 
 
+class EnergyLevel(StrEnum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
 class IntentKind(StrEnum):
     TASK = "task"
     HABIT = "habit"
@@ -64,6 +70,7 @@ class Intent(BaseModel):
     kind: IntentKind
     title: str
     priority: Priority = Priority.P3
+    energy: EnergyLevel | None = None
 
     # How much time, over what repeating period.
     minutes_per_period: int = Field(gt=0)
