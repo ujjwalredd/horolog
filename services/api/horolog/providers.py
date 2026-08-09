@@ -108,6 +108,22 @@ def parse_ics(text: str, origin: datetime, horizon_days: int, zone: ZoneInfo) ->
         )
         if interval:
             out.append(interval)
+
+        # Inject Buffer Time after the meeting if enabled
+        from horolog.settings import settings
+        if settings().auto_buffer_enabled and (finish - start).total_seconds() >= 1800:
+            buffer_end = finish + timedelta(minutes=settings().auto_buffer_minutes)
+            buffer_interval = _to_interval(
+                f"{uid}-{index}-buffer",
+                "Decompression Buffer",
+                finish,
+                buffer_end,
+                origin,
+                horizon_days,
+            )
+            if buffer_interval:
+                out.append(buffer_interval)
+                
     return out
 
 

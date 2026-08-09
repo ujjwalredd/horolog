@@ -60,6 +60,9 @@ five subsystems. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for why that matter
 | **Dynamic Calendar Sync** | ICS feeds and CalDAV servers in, an ICS feed of your plan back out. Recurring events expanded; free/transparent events ignored. |
 | **Smart Meetings** | Multi-attendee scheduling that intersects everyone's availability - without letting a colleague's calendar block your own solo work. |
 | **Productivity Analytics** | Deep-work hours, meeting load, fragmentation, longest free run per day, after-hours load, unmet demand. |
+| **Automated Decompression Buffers** | Automatically detects dense meetings (30+ mins) and injects a 15-minute buffer interval immediately after, preventing solver fragmentation. |
+| **Smart Booking Links** | Publicly shareable `/book/[username]` Next.js route that utilizes "True Free Time" (Fluid Scheduling) to let external parties book you without hard-blocking focus. |
+| **Third-Party Integrations** | Extend Horolog via `integrations/linear.py`. Securely pulls "In Progress" issues directly from Linear and schedules them fluidly as `IntentKind.TASK`. |
 
 ---
 

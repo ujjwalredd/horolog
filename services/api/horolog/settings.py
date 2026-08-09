@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     workday_start_min: int = Field(default=9 * 60, ge=0, le=24 * 60)
     workday_end_min: int = Field(default=17 * 60, ge=0, le=24 * 60)
 
+    auto_buffer_enabled: bool = Field(default=False)
+    auto_buffer_minutes: int = Field(default=15, ge=5, le=60)
+
     llm_provider: Literal["openai", "anthropic"] = "openai"
     """`openai` covers every OpenAI-compatible server — Ollama, vLLM, SGLang,
     llama.cpp, OpenAI itself. `anthropic` uses the official Claude SDK, which
