@@ -19,6 +19,8 @@ import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { publicRuntimeEnv } from "./dev-env.mjs";
+
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const api = path.join(root, "services/api");
 const web = path.join(root, "apps/web");
@@ -59,6 +61,7 @@ rmSync(path.join(web, ".next"), { recursive: true, force: true });
 
 const apiPort = await pick(Number(process.env.HOROLOG_PORT) || 8000, "api");
 const webPort = await pick(Number(process.env.PORT) || 3000, "web");
+const apiEnv = publicRuntimeEnv(process.env, apiPort, webPort);
 
 console.log(`\n  Horolog\n  api  http://localhost:${apiPort}\n  web  http://localhost:${webPort}\n`);
 
@@ -66,7 +69,7 @@ const children = [
   spawn(venv, ["-m", "uvicorn", "horolog.api:app", "--reload", "--port", String(apiPort)], {
     cwd: api,
     stdio: "inherit",
-    env: { ...process.env, PYTHONUNBUFFERED: "1" },
+    env: { ...apiEnv, PYTHONUNBUFFERED: "1" },
   }),
   spawn("npx", ["next", "dev", "-p", String(webPort)], {
     cwd: web,

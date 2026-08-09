@@ -730,7 +730,10 @@ async def availability(
             taken[slot] = 1
 
     # Nothing in the past: `origin` is midnight, so most of today is behind us.
-    now_slot = to_slot(datetime.now(cfg.zone), base)
+    # `to_slot` floors to the slot containing the current instant. That slot's
+    # start is already in the past (except for an impossible zero-microsecond
+    # race), so availability must begin at the following boundary.
+    now_slot = to_slot(datetime.now(cfg.zone), base) + 1
     window = (cfg.workday_start_min // SLOT_MINUTES, cfg.workday_end_min // SLOT_MINUTES)
     out: list[FreeSlot] = []
     for day in range(days):

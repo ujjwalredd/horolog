@@ -151,6 +151,10 @@ works too (`npm run dev:api`, `npm run dev:web`) - just don't start two
 `next dev` processes against the same checkout, because they share `.next` and
 overwrite each other's chunks.
 
+The API loads the repository-root `.env` created by the quickstart. The launcher
+also keeps OAuth callback URLs on the actual ports it selected, so Google and
+Microsoft callbacks continue to work when 8000 or 3000 was already occupied.
+
 The web app proxies `/api/*` to the API, so the browser sees one origin and
 there is no CORS to configure. Override with `HOROLOG_API_URL`.
 
@@ -254,4 +258,3 @@ changes.
 
 **Not affiliated with Reclaim.ai or Dropbox.** "Reclaim.ai" is referenced only
 to describe the category this project reimplements.
-
