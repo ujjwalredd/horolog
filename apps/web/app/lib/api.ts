@@ -152,6 +152,27 @@ export const sync = {
     }),
 };
 
+// --------------------------------------------------------------- booking
+
+export interface FreeSlot {
+  start: string;
+  end: string;
+}
+
+export interface Booked {
+  start: string;
+  end: string;
+  /** How many of your own blocks the solver moved to make room. */
+  rescheduled_blocks: number;
+}
+
+export const booking = {
+  availability: (minutes: number, days: number) =>
+    request<FreeSlot[]>(`/api/availability?minutes=${minutes}&days=${days}`),
+  book: (body: { name: string; email: string; start: string; minutes: number }) =>
+    request<Booked>("/api/book", { method: "POST", body: JSON.stringify(body) }),
+};
+
 export const createIntent = (body: Record<string, unknown>) =>
   request<Intent>("/api/intents", { method: "POST", body: JSON.stringify(body) });
 

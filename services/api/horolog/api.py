@@ -37,17 +37,26 @@ from horolog.db import (
 from horolog.domain.events import BusyInterval
 from horolog.domain.intent import DailyWindow, Intent, IntentKind, Priority
 from horolog.domain.plan import Plan
-from horolog.domain.time import SLOTS_PER_DAY, from_slot, minutes_to_slots, to_slot
+from horolog.domain.time import (
+    SLOT_MINUTES,
+    SLOTS_PER_DAY,
+    from_slot,
+    minutes_to_slots,
+    to_slot,
+)
+from horolog.integrations.linear import LinearError, fetch_linear_issues
 from horolog.llm import ExtractionFailed
 from horolog.providers import (
+    BUFFER_SOURCE,
     CalDAVProvider,
     CalendarProvider,
     ICSProvider,
     SyncError,
+    decompression_buffers,
     to_ics,
 )
 from horolog.settings import settings
-from horolog.solver.solve import solve
+from horolog.solver.solve import merge_busy, solve
 
 # --------------------------------------------------------------------------
 # Time origin
@@ -66,6 +75,20 @@ def origin() -> datetime:
 
 def horizon_slots() -> int:
     return settings().horizon_days * SLOTS_PER_DAY
+
+
+def _clip(start: int, end: int) -> tuple[int, int] | None:
+    """Trim a span to the horizon, or None if it falls entirely outside it.
+
+    Guards the write path. `BusyInterval` refuses a negative slot, so storing a
+    yesterday event — trivially posted by a client in a timezone behind the
+    server, or by anyone entering a meeting that has already begun — used to
+    make every later read of the plan raise on the way out. The row could then
+    only be removed from the database by hand. Feed events have always been
+    clipped in `_to_interval`; the hand-entered path just never was.
+    """
+    lo, hi = max(start, 0), min(end, horizon_slots())
+    return (lo, hi) if hi > lo else None
 
 
 def _localise(value: datetime | None) -> datetime | None:
@@ -310,29 +333,40 @@ async def delete_intent(intent_id: str, db: AsyncSession = Depends(session)) -> 
 
 @app.put("/api/busy", status_code=200)
 async def replace_busy(body: list[BusyIn], db: AsyncSession = Depends(session)) -> dict[str, int]:
-    """Replace the mirrored calendar wholesale.
+    """Replace the hand-entered calendar.
 
-    Stands in for the provider sync layer: whatever CalDAV or Google reports
-    becomes the set of immovable events. Replacing rather than merging keeps the
-    mirror an exact reflection, so a deleted meeting actually frees its slot.
+    Stands in for the provider sync layer: whatever is posted becomes the set of
+    immovable events. Replacing rather than merging keeps the mirror an exact
+    reflection, so a deleted meeting actually frees its slot.
+
+    Scoped to the sources being written. A blanket delete here would silently
+    wipe a synced ICS feed and every accepted booking the moment anyone saved a
+    manual event — sources are independent mirrors, and each owns only its own
+    rows (`_mirror` scopes its delete the same way).
     """
     base = origin()
-    await db.execute(delete(BusyRow))
+    touched = {event.source for event in body} | {"manual"}
+    await db.execute(delete(BusyRow).where(BusyRow.source.in_(touched)))
+    stored = 0
     for event in body:
         if event.end <= event.start:
             raise HTTPException(status_code=422, detail=f"{event.label!r} ends before it starts")
+        span = _clip(to_slot(event.start, base), to_slot(event.end, base))
+        if span is None:
+            continue
+        stored += 1
         db.add(
             BusyRow(
                 id=uuid.uuid4().hex[:16],
                 source=event.source,
                 label=event.label,
-                start_slot=to_slot(event.start, base),
-                end_slot=to_slot(event.end, base),
+                start_slot=span[0],
+                end_slot=span[1],
             )
         )
     await db.commit()
     plan = await _replan(db)
-    return {"events": len(body), "blocks": len(plan.blocks)}
+    return {"events": stored, "blocks": len(plan.blocks)}
 
 
 @app.get("/api/plan")
@@ -353,16 +387,12 @@ async def analytics(db: AsyncSession = Depends(session)) -> Analytics:
     """How the plan actually spends the week."""
     cfg = settings()
     plan = await load_previous_plan(db) or await _replan(db)
-    rows = (await db.execute(select(BusyRow))).scalars().all()
     return analyse(
         plan,
         await load_intents(db),
-        [
-            BusyInterval(
-                source_id=r.id, start_slot=r.start_slot, end_slot=r.end_slot, label=r.label
-            )
-            for r in rows
-        ],
+        # Merged, because a double-booked calendar would otherwise count the
+        # same hour twice and report a meeting load above 100%.
+        merge_busy(await _busy(db)),
         horizon_days=cfg.horizon_days,
         workday_start_min=cfg.workday_start_min,
         workday_end_min=cfg.workday_end_min,
@@ -396,6 +426,163 @@ async def sync_caldav(body: CalDavSyncIn, db: AsyncSession = Depends(session)) -
     cfg = settings()
     provider = CalDAVProvider(body.url, body.username, body.password, cfg.zone)
     return await _mirror(db, provider, "caldav")
+
+
+class LinearSyncIn(BaseModel):
+    api_key: str = Field(min_length=1, max_length=200)
+    priority: Priority = Priority.P2
+    max_chunk_minutes: int = Field(default=120, gt=0)
+
+
+LINEAR_PREFIX = "linear:"
+
+
+@app.post("/api/sync/linear")
+async def sync_linear(body: LinearSyncIn, db: AsyncSession = Depends(session)) -> dict[str, int]:
+    """Mirror Linear's started issues as schedulable tasks.
+
+    Replace rather than merge, on a stable `linear:<issue-id>` key: an issue
+    moved out of progress has to stop consuming time, and reusing the key keeps
+    a re-sync from shuffling everything that did not change.
+    """
+    try:
+        issues = await fetch_linear_issues(body.api_key)
+    except LinearError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    await db.execute(delete(IntentRow).where(IntentRow.id.startswith(LINEAR_PREFIX)))
+    base = origin()
+    for issue in issues:
+        label = f"{issue.identifier} {issue.title}".strip()
+        wire = IntentIn(
+            title=label[:200],
+            kind=IntentKind.TASK,
+            priority=body.priority,
+            minutes_per_period=issue.minutes,
+            # An issue smaller than the default 30-minute floor would be
+            # rejected by the domain model for demanding less than one chunk.
+            min_chunk_minutes=min(30, issue.minutes),
+            max_chunk_minutes=max(min(body.max_chunk_minutes, issue.minutes), issue.minutes),
+        )
+        intent = wire.to_domain(f"{LINEAR_PREFIX}{issue.id}", base)
+        db.add(IntentRow(id=intent.id, payload=intent.model_dump(mode="json")))
+    await db.commit()
+    plan = await _replan(db)
+    return {"issues": len(issues), "blocks": len(plan.blocks)}
+
+
+# --------------------------------------------------------------------------
+# Booking links
+# --------------------------------------------------------------------------
+
+MIN_BOOKING_MINUTES = 15
+MAX_BOOKING_MINUTES = 8 * 60
+
+
+class FreeSlot(BaseModel):
+    start: datetime
+    end: datetime
+
+
+@app.get("/api/availability")
+async def availability(
+    minutes: int = 30, days: int = 7, db: AsyncSession = Depends(session)
+) -> list[FreeSlot]:
+    """Openings a guest may book, inside the configured working window.
+
+    "True free time": only real commitments close a slot. Horolog's own blocks
+    are movable by construction, so offering an hour that currently holds focus
+    time is not a double-booking — accepting it pushes that focus time
+    elsewhere. Hiding those hours would hand a booking link a calendar that
+    looks full while the day is actually open, which is the exact failure the
+    scheduler exists to prevent.
+    """
+    if not MIN_BOOKING_MINUTES <= minutes <= MAX_BOOKING_MINUTES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"minutes must be between {MIN_BOOKING_MINUTES} and {MAX_BOOKING_MINUTES}",
+        )
+    cfg = settings()
+    if not 1 <= days <= cfg.horizon_days:
+        raise HTTPException(
+            status_code=422, detail=f"days must be between 1 and {cfg.horizon_days}"
+        )
+
+    base = origin()
+    need = minutes_to_slots(minutes)
+    taken = bytearray(days * SLOTS_PER_DAY)
+    for event in merge_busy(await _busy(db)):
+        for slot in range(max(event.start_slot, 0), min(event.end_slot, len(taken))):
+            taken[slot] = 1
+
+    # Nothing in the past: `origin` is midnight, so most of today is behind us.
+    now_slot = to_slot(datetime.now(cfg.zone), base)
+    window = (cfg.workday_start_min // SLOT_MINUTES, cfg.workday_end_min // SLOT_MINUTES)
+    out: list[FreeSlot] = []
+    for day in range(days):
+        day_lo = day * SLOTS_PER_DAY
+        # Step by the meeting length so the offered slots tile the day rather
+        # than overlap — two adjacent offers that cannot both be taken are a
+        # booking page that contradicts itself.
+        for start in range(day_lo + window[0], day_lo + window[1] - need + 1, need):
+            if start < now_slot or any(taken[start : start + need]):
+                continue
+            out.append(FreeSlot(start=from_slot(start, base), end=from_slot(start + need, base)))
+    return out
+
+
+class BookIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    email: str = Field(default="", max_length=200)
+    start: LocalDateTime
+    minutes: int = 30
+
+
+@app.post("/api/book", status_code=201)
+async def book(body: BookIn, db: AsyncSession = Depends(session)) -> dict[str, Any]:
+    """Accept a booking from a shared link.
+
+    The booking lands in the busy mirror, not the intent list, because a guest's
+    commitment is exactly as immovable as any other real meeting — that is what
+    makes the surrounding flexible work reschedule around it instead of the
+    other way round.
+    """
+    if not MIN_BOOKING_MINUTES <= body.minutes <= MAX_BOOKING_MINUTES:
+        raise HTTPException(status_code=422, detail="unsupported meeting length")
+
+    base = origin()
+    start = to_slot(body.start, base)
+    end = start + minutes_to_slots(body.minutes)
+    if start < to_slot(datetime.now(settings().zone), base):
+        raise HTTPException(status_code=409, detail="that time has already passed")
+    if end > horizon_slots():
+        raise HTTPException(
+            status_code=422,
+            detail=f"bookings only go {settings().horizon_days} days out",
+        )
+    for event in merge_busy(await _busy(db)):
+        if start < event.end_slot and event.start_slot < end:
+            raise HTTPException(
+                status_code=409, detail="that slot was taken while you were choosing"
+            )
+
+    who = f"{body.name} <{body.email}>" if body.email else body.name
+    db.add(
+        BusyRow(
+            id=f"booking:{uuid.uuid4().hex[:12]}",
+            source="booking",
+            label=f"Booked: {who}"[:200],
+            start_slot=start,
+            end_slot=end,
+        )
+    )
+    await db.commit()
+    plan = await _replan(db)
+    return {
+        "start": from_slot(start, base).isoformat(),
+        "end": from_slot(end, base).isoformat(),
+        "rescheduled_blocks": sum(1 for b in plan.blocks if b.moved_from is not None),
+    }
 
 
 @app.get("/api/plan.ics")
@@ -475,8 +662,15 @@ async def _mirror(db: AsyncSession, provider: CalendarProvider, source: str) -> 
     return {"events": len(events), "blocks": len(plan.blocks)}
 
 
-async def _replan(db: AsyncSession) -> Plan:
-    intents = await load_intents(db)
+async def _busy(db: AsyncSession) -> list[BusyInterval]:
+    """Every interval the calendar is already spoken for.
+
+    The single place the mirror is read, so the solver, the analytics page, the
+    booking page and the planner grid can never disagree about what is occupied.
+    Decompression buffers are derived here rather than stored: they are a
+    function of the meetings, and persisting them would leave orphans behind
+    every time a meeting moved.
+    """
     rows = (await db.execute(select(BusyRow))).scalars().all()
     busy = [
         BusyInterval(
@@ -484,7 +678,15 @@ async def _replan(db: AsyncSession) -> Plan:
         )
         for row in rows
     ]
-    plan = solve(intents, busy, horizon_slots(), previous=await load_previous_plan(db))
+    cfg = settings()
+    if cfg.auto_buffer_enabled:
+        busy += decompression_buffers(busy, cfg.auto_buffer_minutes)
+    return busy
+
+
+async def _replan(db: AsyncSession) -> Plan:
+    intents = await load_intents(db)
+    plan = solve(intents, await _busy(db), horizon_slots(), previous=await load_previous_plan(db))
     await save_plan(db, plan)
     bus.publish(json.dumps({"blocks": len(plan.blocks), "solve_ms": round(plan.solve_ms, 2)}))
     return plan
@@ -494,6 +696,7 @@ async def _render(db: AsyncSession, plan: Plan) -> PlanOut:
     base = origin()
     titles = {i.id: i for i in await load_intents(db)}
     rows = (await db.execute(select(BusyRow))).scalars().all()
+    sources = {row.id: row.source for row in rows}
     return PlanOut(
         blocks=[
             BlockOut(
@@ -520,12 +723,14 @@ async def _render(db: AsyncSession, plan: Plan) -> PlanOut:
         ],
         busy=[
             BusyIn(
-                label=row.label,
-                source=row.source,
-                start=from_slot(row.start_slot, base),
-                end=from_slot(row.end_slot, base),
+                label=event.label,
+                # Derived buffers have no row of their own; the grid still has
+                # to show them, or time disappears with no visible reason.
+                source=sources.get(event.source_id, BUFFER_SOURCE),
+                start=from_slot(event.start_slot, base),
+                end=from_slot(event.end_slot, base),
             )
-            for row in rows
+            for event in await _busy(db)
         ],
         solve_ms=plan.solve_ms,
         complete=plan.complete,

@@ -60,9 +60,18 @@ five subsystems. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for why that matter
 | **Dynamic Calendar Sync** | ICS feeds and CalDAV servers in, an ICS feed of your plan back out. Recurring events expanded; free/transparent events ignored. |
 | **Smart Meetings** | Multi-attendee scheduling that intersects everyone's availability - without letting a colleague's calendar block your own solo work. |
 | **Productivity Analytics** | Deep-work hours, meeting load, fragmentation, longest free run per day, after-hours load, unmet demand. |
-| **Automated Decompression Buffers** | Automatically detects dense meetings (30+ mins) and injects a 15-minute buffer interval immediately after, preventing solver fragmentation. |
-| **Smart Booking Links** | Publicly shareable `/book/[username]` Next.js route that utilizes "True Free Time" (Fluid Scheduling) to let external parties book you without hard-blocking focus. |
-| **Third-Party Integrations** | Extend Horolog via `integrations/linear.py`. Securely pulls "In Progress" issues directly from Linear and schedules them fluidly as `IntentKind.TASK`. |
+
+Three more, built on the same engine:
+
+| Feature | What it does |
+|---|---|
+| **Decompression buffers** | Off by default (`HOROLOG_AUTO_BUFFER_ENABLED`). Holds recovery time after every meeting between 30 minutes and 4 hours, from any source — ICS, CalDAV or typed in. A run of back-to-back meetings gets one buffer, at the end. It spends real capacity, which is why it is opt-in. |
+| **Booking links** | `/book/<name>` offers *true* free time from `GET /api/availability`: hours holding flexible focus work are still bookable, because accepting one moves that work rather than colliding with it. Only real commitments close a slot. `POST /api/book` writes the accepted meeting to the calendar mirror and re-solves around it. |
+| **Linear import** | `POST /api/sync/linear` pulls every started issue and schedules it as a task, one point ≈ one hour. Keyed on the issue id, so re-syncing leaves untouched work where it was; issues that leave "started" stop consuming time. |
+
+> **Booking links have no authentication.** `/book/<name>` is a display label,
+> not an identity — this is a single-user, self-hosted app. Put the route behind
+> your reverse proxy before exposing it to the internet.
 
 ---
 

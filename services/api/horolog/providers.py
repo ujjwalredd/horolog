@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from horolog.domain.events import BusyInterval
-from horolog.domain.time import to_slot
+from horolog.domain.time import SLOT_MINUTES, minutes_to_slots, to_slot
 
 
 class SyncError(RuntimeError):
@@ -108,23 +108,42 @@ def parse_ics(text: str, origin: datetime, horizon_days: int, zone: ZoneInfo) ->
         )
         if interval:
             out.append(interval)
-
-        # Inject Buffer Time after the meeting if enabled
-        from horolog.settings import settings
-        if settings().auto_buffer_enabled and (finish - start).total_seconds() >= 1800:
-            buffer_end = finish + timedelta(minutes=settings().auto_buffer_minutes)
-            buffer_interval = _to_interval(
-                f"{uid}-{index}-buffer",
-                "Decompression Buffer",
-                finish,
-                buffer_end,
-                origin,
-                horizon_days,
-            )
-            if buffer_interval:
-                out.append(buffer_interval)
-                
     return out
+
+
+BUFFER_SOURCE = "buffer"
+
+BUFFER_MIN_SLOTS = 30 // SLOT_MINUTES
+"""Shortest meeting worth decompressing after. A 15-minute stand-up does not
+leave anyone needing to recover; buffering it only burns capacity."""
+
+BUFFER_MAX_SLOTS = 4 * 60 // SLOT_MINUTES
+"""Longest. Past this the event is an offsite, a travel day or an all-day marker
+(a holiday is 96 slots), and appending 15 minutes to it means nothing."""
+
+
+def decompression_buffers(busy: list[BusyInterval], minutes: int) -> list[BusyInterval]:
+    """Recovery time trailing each substantial meeting.
+
+    Applied to the *assembled* mirror rather than inside a provider, so ICS,
+    CalDAV and hand-entered events all get the same treatment — putting it in
+    `parse_ics` gave buffers to ICS subscribers only.
+
+    Back-to-back meetings need no special case: a buffer that lands on top of
+    the next meeting is unioned away by `merge_busy`, so a run of meetings ends
+    up with exactly one buffer, after the last of them.
+    """
+    width = minutes_to_slots(minutes)
+    return [
+        BusyInterval(
+            source_id=f"{BUFFER_SOURCE}:{event.source_id}",
+            start_slot=event.end_slot,
+            end_slot=event.end_slot + width,
+            label="Decompression buffer",
+        )
+        for event in busy
+        if BUFFER_MIN_SLOTS <= event.end_slot - event.start_slot <= BUFFER_MAX_SLOTS
+    ]
 
 
 class ICSProvider:

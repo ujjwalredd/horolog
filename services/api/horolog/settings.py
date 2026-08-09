@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     workday_end_min: int = Field(default=17 * 60, ge=0, le=24 * 60)
 
     auto_buffer_enabled: bool = Field(default=False)
+    """Hold recovery time after every substantial meeting.
+
+    Off by default: it is capacity that stops being schedulable, so switching it
+    on legitimately makes a full week start reporting unmet demand."""
+
     auto_buffer_minutes: int = Field(default=15, ge=5, le=60)
 
     llm_provider: Literal["openai", "anthropic"] = "openai"
