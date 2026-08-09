@@ -4,7 +4,7 @@ import * as React from "react"
 import { motion, type Variants } from "motion/react"
 import { cn } from "@/lib/utils"
 import Balancer from "react-wrap-balancer"
-import { Brain, Cpu, CalendarSync, Clock } from "lucide-react"
+import { Brain, Cpu, CalendarSync, Clock, Link, GitPullRequest } from "lucide-react"
 
 const container: Variants = {
   hidden: {},
@@ -50,7 +50,7 @@ export function BentoGrid() {
               </div>
               <h3 className="font-serif text-[28px] text-foreground mb-4">Cognitive Scheduling</h3>
               <p className="text-[16px] leading-[1.7] text-muted-foreground font-light max-w-md">
-                Tell the engine 'deep work for 4 hours this week'. It carves the optimal slots around your existing commitments and adapts dynamically.
+                Tell the engine &apos;deep work for 4 hours this week&apos;. It carves the optimal slots around your existing commitments and adapts dynamically.
               </p>
             </motion.div>
 
@@ -61,18 +61,18 @@ export function BentoGrid() {
               </div>
               <h3 className="font-serif text-[32px] mb-4 leading-tight">Local-First<br/>Execution</h3>
               <p className="text-[16px] leading-[1.7] text-white/70 font-light mt-auto">
-                Point it at Claude, OpenAI, or a local Llama instance. Complete privacy, absolute control.
+                Point it at Claude, OpenAI, or a local Llama instance. Complete privacy, absolute control. Zero cloud egress.
               </p>
             </motion.div>
 
             {/* Bento Box 3 */}
             <motion.div variants={item} className="group flex flex-col p-8 rounded-3xl bg-background shadow-sm hover:shadow-md border border-primary/5 transition-shadow duration-300">
               <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/5 transition-colors duration-500 group-hover:bg-primary/10">
-                <CalendarSync className="text-primary" size={24} strokeWidth={1.5} />
+                <Link className="text-primary" size={24} strokeWidth={1.5} />
               </div>
-              <h3 className="font-serif text-[22px] text-foreground mb-3">Fluid Habits</h3>
+              <h3 className="font-serif text-[22px] text-foreground mb-3">Smart Booking Links</h3>
               <p className="text-[15px] leading-[1.6] text-muted-foreground font-light">
-                Habits weave seamlessly through your free time.
+                Public booking links (`/book/[username]`) that dynamically protect your deep focus time.
               </p>
             </motion.div>
 
@@ -81,9 +81,20 @@ export function BentoGrid() {
               <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/5 transition-colors duration-500 group-hover:bg-primary/10">
                 <Clock className="text-primary" size={24} strokeWidth={1.5} />
               </div>
-              <h3 className="font-serif text-[22px] text-foreground mb-3">Buffer Times</h3>
+              <h3 className="font-serif text-[22px] text-foreground mb-3">Decompression Buffers</h3>
               <p className="text-[15px] leading-[1.6] text-muted-foreground font-light">
-                Automatically insert breathing room before high-stakes events.
+                Auto-inject 15m buffer blocks after 30m+ meetings to avoid back-to-back burnout.
+              </p>
+            </motion.div>
+
+            {/* Bento Box 5 */}
+            <motion.div variants={item} className="md:col-span-2 group flex flex-col p-8 rounded-3xl bg-background shadow-sm hover:shadow-md border border-primary/5 transition-shadow duration-300">
+              <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/5 transition-colors duration-500 group-hover:bg-primary/10">
+                <GitPullRequest className="text-primary" size={24} strokeWidth={1.5} />
+              </div>
+              <h3 className="font-serif text-[22px] text-foreground mb-3">Third-Party Task Sync</h3>
+              <p className="text-[15px] leading-[1.6] text-muted-foreground font-light">
+                Sync Linear & Todoist tasks directly into Horolog. Issues automatically schedule as fluid tasks around your real-life calendar.
               </p>
             </motion.div>
           </div>
