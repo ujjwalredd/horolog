@@ -239,6 +239,11 @@ Brings up the API, the web app, Postgres, and Ollama with a small model pulled
 on first boot. For SQLite instead of Postgres, drop the `db` service and set
 `HOROLOG_DATABASE_URL=sqlite+aiosqlite:///./data/horolog.db`.
 
+**Stick to one API worker.** SSE, OAuth's CSRF state, and the booking-link
+rate limiter all live in-process — a second `uvicorn` worker won't see the
+others' state. Put a reverse proxy in front of one container instead of
+adding `--workers`.
+
 **Authentication:** this build is single-user and unauthenticated by design - it
 runs on your machine against your calendar. For a team instance, put it behind
 an SSO proxy (oauth2-proxy, Authelia, Tailscale, Cloudflare Access) rather than

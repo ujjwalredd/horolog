@@ -6,10 +6,13 @@ import { PRIORITY_LABEL, RULE } from "@/app/components/Grid";
 import { Shell } from "@/app/components/Shell";
 import { api, formatDuration, minutesBetween, type Plan, type Block, type Busy } from "@/app/lib/api";
 import { EventManager, type Event } from "@/components/ui/event-manager";
+import Link from "next/link";
 import {
   Download,
   AlertTriangle,
   Sparkles,
+  Command,
+  Link2,
 } from "lucide-react";
 
 /** Map backend priority number to EventManager color values */
@@ -188,6 +191,37 @@ export default function Planner() {
             <p className="mt-1 text-[12.5px] text-fg-muted">
               Ensure the backend API is running on port 8000.
             </p>
+          </div>
+        )}
+
+        {plan && plan.blocks.length === 0 && plan.busy.length === 0 && (
+          <div className="mb-6 rounded-card border border-black/[0.08] bg-surface p-5 shadow-sm">
+            <h2 className="text-[14px] font-semibold text-fg">Nothing scheduled yet</h2>
+            <p className="mt-1 text-[13px] leading-relaxed text-fg-muted">
+              A fresh install starts with an empty calendar on purpose — nothing is faked. Get a
+              real week on the board with any of these:
+            </p>
+            <ul className="mt-3 space-y-2 text-[13px] text-fg-muted">
+              <li className="flex items-center gap-2">
+                <kbd className="tabular inline-flex items-center gap-0.5 rounded-md border border-black/[0.08] bg-sunk px-1.5 py-0.5 text-[10.5px] font-mono">
+                  <Command size={10} />K
+                </kbd>
+                capture something in plain language, e.g. &ldquo;gym 3x a week, an hour each&rdquo;
+              </li>
+              <li className="flex items-center gap-2">
+                <Link2 size={13} className="text-accent" />
+                <Link href="/connect" className="font-medium text-accent hover:underline">
+                  Connect a calendar
+                </Link>
+                {" "}to pull in what you already have
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="rounded-md border border-black/[0.08] bg-sunk px-1.5 py-0.5 font-mono text-[10.5px]">
+                  npm run seed:demo
+                </span>
+                for a sample week, if you're just trying it out
+              </li>
+            </ul>
           </div>
         )}
 

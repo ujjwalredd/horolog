@@ -102,10 +102,12 @@ class OpenAICompatible:
             },
             "temperature": 0,
         }
+        # Local servers (Ollama, llama.cpp) take no key at all — an empty key
+        # would still produce "Bearer " with nothing after it, which httpx's
+        # header validation rejects outright before the request is even sent.
+        headers = {"Authorization": f"Bearer {self._key}"} if self._key else {}
         async with httpx.AsyncClient(timeout=self._timeout) as http:
-            response = await http.post(
-                self._url, json=body, headers={"Authorization": f"Bearer {self._key}"}
-            )
+            response = await http.post(self._url, json=body, headers=headers)
             response.raise_for_status()
             return str(response.json()["choices"][0]["message"]["content"])
 
