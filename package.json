@@ -30,6 +30,7 @@
     "test": "npm run test:launcher && cd services/api && .venv/bin/python -m pytest -q",
     "test:launcher": "node --test scripts/dev-env.test.mjs",
     "bench": "cd services/api && .venv/bin/python -m horolog.bench",
+    "seed:demo": "cd services/api && .venv/bin/python -m horolog.seed_demo",
     "check": "npm run test:launcher && npm run check:api && npm run check:web",
     "check:api": "cd services/api && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy horolog && .venv/bin/python -m pytest -q",
     "check:web": "cd apps/web && npm run typecheck && npm run build",

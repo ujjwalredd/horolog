@@ -48,7 +48,11 @@ function blocksToEvents(blocks: Block[]): Event[] {
       tags.push(block.energy.charAt(0).toUpperCase() + block.energy.slice(1) + " Energy");
     }
     return {
-      id: `${block.intent_id}-${block.occurrence}`,
+      // Multiple chunks of the same occurrence (a long focus session split
+      // into two sittings, say) share intent_id + occurrence — chunk has to
+      // be part of the key too, or React sees duplicate ids and month view
+      // (which lists several events per day cell) renders it visibly.
+      id: `${block.intent_id}-${block.occurrence}-${block.chunk}`,
       title: block.title,
       description: `${KIND_LABEL[block.kind]} · Chunk ${block.chunk} · ${formatDuration(minutesBetween(block.start, block.end))}`,
       startTime: new Date(block.start),
@@ -131,8 +135,10 @@ export default function Planner() {
         return;
       }
       try {
+        // id is `${intent_id}-${occurrence}-${chunk}` — strip both trailing
+        // numeric segments to recover the bare intent_id.
         const parts = id.split("-");
-        const intentId = parts.length > 1 ? parts.slice(0, -1).join("-") : parts[0] ?? id;
+        const intentId = parts.length > 2 ? parts.slice(0, -2).join("-") : parts[0] ?? id;
         await api.remove(intentId);
         await load();
       } catch (caught) {
@@ -195,7 +201,7 @@ export default function Planner() {
               categories={["Task", "Habit", "Focus", "Buffer", "Meeting", "External"]}
               availableTags={["Critical", "High", "Normal", "Low", "Moved", "Locked", "High Energy", "Medium Energy", "Low Energy"]}
               colors={COLORS}
-              defaultView="week"
+              defaultView="month"
               className="min-h-[600px]"
             />
           </section>

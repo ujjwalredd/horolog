@@ -4,6 +4,7 @@
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB.svg?logo=python&logoColor=white)](services/api/pyproject.toml)
 [![Next.js 15](https://img.shields.io/badge/Next.js-15-000000.svg?logo=next.js&logoColor=white)](apps/web/package.json)
 [![CI Status](https://img.shields.io/github/actions/workflow/status/ujjwalredd/horolog/ci.yml?branch=main&label=CI)](.github/workflows/ci.yml)
+[![Changelog](https://img.shields.io/badge/Changelog-0.1.0-lightgrey.svg)](CHANGELOG.md)
 
 ![Horolog Interface Banner](docs/hero.png)
 
@@ -79,13 +80,43 @@ Three more, built on the same engine:
 
 ## Screens
 
-| | |
-|---|---|
-| **Planner** | Week grid. Priority by accent weight, kind by glyph, movability by rule style. Live over SSE. |
-| **Task inbox** | Every intent and where it actually landed. Anything that did not fit is called out, not hidden. |
-| **Habits** | Builds routines in the units people speak - "3× a week, an hour each, between 10 and 4". |
-| **Analytics** | Stat tiles plus a per-day load chart. Palette validated for colour-vision deficiency, not eyeballed. |
-| **Calendars** | Connect an ICS feed or a CalDAV server; export your plan as a subscribable feed. |
+Real captures, from `npm run seed:demo`'s sample week - not mockups.
+
+**Planner** — month, week, day or list. Priority by accent weight, kind by
+glyph, movability by rule style. Live over SSE.
+
+![Planner](docs/screenshots/planner.png)
+
+**Task inbox** — every intent and where it actually landed. Anything that did
+not fit is called out, not hidden.
+
+![Task inbox](docs/screenshots/inbox.png)
+
+**Habits & Focus Time** — builds routines and weekly focus goals in the units
+people speak: "3× a week, an hour each, between 10 and 4" or "10 hours a week,
+≥90-minute sittings".
+
+![Habits & Focus Time](docs/screenshots/habits.png)
+
+**Meetings** — a Smart Meeting only lands where every attendee's busy time
+allows, without ever blocking your own solo work.
+
+![Meetings](docs/screenshots/meetings.png)
+
+**Analytics** — stat tiles plus a per-day load chart. Palette validated for
+colour-vision deficiency, not eyeballed.
+
+![Analytics](docs/screenshots/analytics.png)
+
+**Calendars** — connect Google or Outlook, an ICS feed, or a CalDAV server;
+export your plan as a subscribable feed.
+
+![Calendars](docs/screenshots/connect.png)
+
+**Time** — a live "today" view: what's happening right now, what's next, and
+a moving now-line on the day's timeline.
+
+![Time](docs/screenshots/time.png)
 
 `⌘K` anywhere opens natural-language capture: *"write the design doc, about
 three hours, by Friday"*.
@@ -213,6 +244,10 @@ runs on your machine against your calendar. For a team instance, put it behind
 an SSO proxy (oauth2-proxy, Authelia, Tailscale, Cloudflare Access) rather than
 exposing it directly. Horolog trusts the identity your proxy asserts instead of
 rolling its own credential store.
+
+**Backups:** see [docs/BACKUP.md](docs/BACKUP.md) - one command either way,
+SQLite or Postgres. There's no schema-migration tooling, so back up before
+pulling a new version.
 
 ---
 

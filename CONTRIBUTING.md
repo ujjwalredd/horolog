@@ -92,6 +92,58 @@ demand held at 85% of open capacity | 7 runs each
 
 ---
 
+## 🔌 Adding a Provider or Integration
+
+Both patterns below are already minimal by design — the shared helpers do the
+heavy lifting, so a new provider is genuinely a small diff. Read the
+reference file named in each case before writing anything; copy its shape
+rather than inventing a new one.
+
+### A calendar provider (Google/Outlook/ICS/CalDAV today)
+
+1. Implement the `CalendarProvider` protocol in a new file under
+   `services/api/horolog/integrations/`:
+   ```python
+   class CalendarProvider(Protocol):
+       async def fetch(self, origin: datetime, horizon_days: int) -> list[BusyInterval]: ...
+   ```
+   (`services/api/horolog/providers.py`). Reuse `to_interval()` and
+   `as_datetime()` from that same file to convert what the upstream API
+   returns into `BusyInterval`s, and raise `SyncError` (message fit to show a
+   user) on failure. **Reference implementation:**
+   `services/api/horolog/integrations/google_calendar.py` — its own docstring
+   states the contract explicitly.
+2. Add one `POST /api/sync/<provider>` endpoint in `api.py` that builds your
+   provider and calls the shared `_mirror()` helper — copy `sync_google`/
+   `sync_outlook` (`api.py`, search `@app.post("/api/sync/google")`), about
+   six lines.
+3. If it's OAuth-based: add entries to `oauth.py`'s `_AUTH_URLS`,
+   `_TOKEN_URLS`, `_SCOPES`, `CALENDAR_PROVIDERS`, and `REFRESHABLE` (if it
+   supports refresh tokens), plus two new `Settings` fields
+   (`<provider>_client_id` / `_client_secret`) in `settings.py`. Document the
+   new env vars in `.env.example`, following the existing entries' format
+   (registration URL + redirect URI).
+4. Frontend: add the provider to the `Provider` type in
+   `apps/web/app/lib/api.ts` and a button entry in
+   `apps/web/app/connect/page.tsx`'s `CALENDAR_PROVIDERS` array.
+
+### A tracker integration (Linear/Todoist/GitHub today)
+
+1. A Pydantic model for one task + a `fetch_*` function + one `*Error`
+   exception subclassing `RuntimeError`, in a new file under
+   `services/api/horolog/integrations/`. **Reference implementation:**
+   `services/api/horolog/integrations/todoist.py` — 77 lines, nothing more
+   than that shape.
+2. One endpoint in `api.py` using the shared `_sync_tasks()` helper (search
+   `async def _sync_tasks`), which already reduces storage to a
+   `(id, title, priority, minutes)` tuple regardless of source.
+3. If OAuth-based, same `oauth.py`/`settings.py`/`.env.example` steps as
+   above, added to `TRACKER_PROVIDERS` instead of `CALENDAR_PROVIDERS`. A
+   personal-API-key tracker (no OAuth app needed) can skip straight to the
+   endpoint — see how Todoist's pasted-key path works in `sync_todoist`.
+
+---
+
 ## 📥 Submitting a Pull Request
 
 1. **Fork the repository** and create a feature branch (`git checkout -b feature/my-feature`).

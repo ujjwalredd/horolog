@@ -11,10 +11,16 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from functools import lru_cache
 from typing import Any
 
 from sqlalchemy import JSON, DateTime, Integer, String, Text, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from horolog.domain.intent import Intent
@@ -84,8 +90,15 @@ class OAuthTokenRow(Base):
     )
 
 
-_engine = create_async_engine(settings().database_url, future=True)
-_session_factory = async_sessionmaker(_engine, expire_on_commit=False)
+@lru_cache(maxsize=1)
+def _engine() -> AsyncEngine:
+    return create_async_engine(settings().database_url, future=True)
+
+
+@lru_cache(maxsize=1)
+def _session_factory() -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(_engine(), expire_on_commit=False)
+
 
 LATEST_PLAN_ID = 1
 """Single-user deployment: one current plan. Becomes a user foreign key when
@@ -93,12 +106,32 @@ multi-tenancy arrives; nothing else in the schema has to change."""
 
 
 async def init_db() -> None:
-    async with _engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    """Create any missing tables.
+
+    Lazily building the engine here (rather than at import time) means a bad
+    `HOROLOG_DATABASE_URL` — wrong scheme, unreachable host, wrong credentials
+    — surfaces as one readable message instead of a bare SQLAlchemy/asyncpg
+    traceback the first time anything touches the database.
+    """
+    try:
+        async with _engine().begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as exc:
+        raise RuntimeError(
+            "Horolog could not set up the database at startup.\n\n"
+            f"  {type(exc).__name__}: {exc}\n\n"
+            "  Likely causes:\n"
+            "    - HOROLOG_DATABASE_URL in .env is malformed or uses the wrong scheme\n"
+            "    - Postgres isn't up yet - `docker compose -f infra/docker-compose.yml up db`\n"
+            "    - wrong username, password, or database name\n"
+            "    - using Postgres without the driver installed - "
+            "`uv pip install -e '.[dev,postgres]'`\n\n"
+            "  See .env.example for the expected HOROLOG_DATABASE_URL format."
+        ) from exc
 
 
 async def session() -> AsyncIterator[AsyncSession]:
-    async with _session_factory() as db:
+    async with _session_factory()() as db:
         yield db
 
 
