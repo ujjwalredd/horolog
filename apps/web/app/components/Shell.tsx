@@ -161,6 +161,18 @@ export function Shell({
         </div>
       </aside>
 
+      {/* Mobile-only capture button — the desktop sidebar has the ⌘K
+          trigger, but ⌘K itself doesn't exist on a phone, and this was the
+          one screen size with no way to open capture at all. */}
+      <button
+        type="button"
+        onClick={() => setCommandOpen(true)}
+        aria-label="Add time"
+        className="fixed bottom-20 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-on-accent shadow-pop transition-transform active:scale-95 lg:hidden"
+      >
+        <Sparkles size={22} />
+      </button>
+
       {/* Mobile Nav */}
       <div className="fixed bottom-0 left-0 right-0 z-40 flex h-16 items-center justify-around border-t border-border bg-background/80 px-4 backdrop-blur-md lg:hidden">
         {NAV.map((item) => {

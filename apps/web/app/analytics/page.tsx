@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Shell } from "@/app/components/Shell";
 import { analytics, formatDuration, type Analytics } from "@/app/lib/api";
-import { TrendingUp, Clock, AlertCircle, Calendar, BarChart2 } from "lucide-react";
+import { Clock } from "lucide-react";
 
 const SERIES = {
   scheduled: "#6366F1",
@@ -48,29 +48,36 @@ export default function AnalyticsPage() {
           </div>
         )}
 
+        {!data && !error && <AnalyticsSkeleton />}
+
         {data && (
           <>
             {/* Stat Cards */}
             <section className="mb-7 grid gap-px overflow-hidden rounded-card border border-black/[0.08] bg-line sm:grid-cols-2 lg:grid-cols-4 shadow-sm">
               <Stat
-                value={formatDuration(data.focus_minutes)}
+                value={data.focus_minutes}
+                format={(n) => formatDuration(Math.round(n))}
                 label="Deep-work time"
                 note="blocks ≥ 1 hour"
               />
               <Stat
-                value={`${Math.round(data.meeting_load * 100)}%`}
+                value={data.meeting_load * 100}
+                format={(n) => `${Math.round(n)}%`}
                 label="Meeting load"
                 note={`${formatDuration(data.meeting_minutes)} of open hours`}
                 warn={data.meeting_load > 0.4}
+                sparkline={data.days.slice(0, 14).map((d) => d.meeting_minutes)}
               />
               <Stat
-                value={formatDuration(Math.round(data.fragmentation))}
+                value={data.fragmentation}
+                format={(n) => formatDuration(Math.round(n))}
                 label="Average block"
                 note="longer is better for focus"
                 warn={data.fragmentation > 0 && data.fragmentation < 45}
               />
               <Stat
-                value={data.unmet_minutes ? formatDuration(data.unmet_minutes) : "0m"}
+                value={data.unmet_minutes}
+                format={(n) => (n > 0 ? formatDuration(Math.round(n)) : "0m")}
                 label="Unmet demand"
                 note={data.unmet_minutes ? "schedule oversubscribed" : "100% placed"}
                 warn={data.unmet_minutes > 0}
@@ -129,24 +136,106 @@ export default function AnalyticsPage() {
   );
 }
 
+/** Animates toward `target`, easing out over `durationMs` — skipped entirely
+ *  under prefers-reduced-motion, which jumps straight to the final value. */
+function useCountUp(target: number, durationMs = 400): number {
+  const [display, setDisplay] = useState(target);
+  const from = useRef(target);
+
+  useEffect(() => {
+    const start = from.current;
+    from.current = target;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced || start === target) {
+      setDisplay(target);
+      return;
+    }
+    const startTime = performance.now();
+    let frame: number;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - startTime) / durationMs);
+      const eased = 1 - (1 - t) ** 3; // ease-out-cubic
+      setDisplay(start + (target - start) * eased);
+      if (t < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target, durationMs]);
+
+  return display;
+}
+
 function Stat({
   value,
+  format,
   label,
   note,
   warn = false,
+  sparkline,
 }: {
-  value: string;
+  value: number;
+  format: (n: number) => string;
   label: string;
   note: string;
   warn?: boolean;
+  sparkline?: number[];
 }) {
+  const animated = useCountUp(value);
   return (
     <div className="bg-surface p-5">
       <div className={`tabular text-[28px] font-bold leading-none ${warn ? "text-danger" : "text-fg"}`}>
-        {value}
+        {format(animated)}
       </div>
       <div className="mt-2.5 text-[13.5px] font-semibold text-fg">{label}</div>
       <div className="mt-0.5 text-[11.5px] font-medium text-fg-muted">{note}</div>
+      {sparkline && sparkline.length > 1 && <Sparkline values={sparkline} />}
+    </div>
+  );
+}
+
+/** A minimal trend line — only ever passed data the API actually provides
+ *  per-day; never fabricated for stats without a real series behind them. */
+function Sparkline({ values }: { values: number[] }) {
+  const max = Math.max(...values, 1);
+  const w = 100;
+  const h = 22;
+  const points = values
+    .map((v, i) => `${(i / (values.length - 1)) * w},${h - (v / max) * h}`)
+    .join(" ");
+  return (
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio="none"
+      className="mt-2.5 h-[22px] w-full text-accent/50"
+      aria-hidden
+    >
+      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+/** Matches the real layout's shape (4 stat cells, the chart, two breakdown
+ *  panels) so the page doesn't go blank between mount and first data —
+ *  `animate-pulse` is already neutralised under prefers-reduced-motion by
+ *  the global rule in globals.css. */
+function AnalyticsSkeleton() {
+  return (
+    <div aria-hidden>
+      <section className="mb-7 grid gap-px overflow-hidden rounded-card border border-black/[0.08] bg-line sm:grid-cols-2 lg:grid-cols-4 shadow-sm">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="space-y-2.5 bg-surface p-5">
+            <div className="h-7 w-16 animate-pulse rounded-md bg-sunk" />
+            <div className="h-4 w-24 animate-pulse rounded-md bg-sunk" />
+            <div className="h-3 w-28 animate-pulse rounded-md bg-sunk" />
+          </div>
+        ))}
+      </section>
+      <section className="mb-7 h-[268px] animate-pulse rounded-card border border-black/[0.08] bg-surface shadow-sm" />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="h-[220px] animate-pulse rounded-card border border-black/[0.08] bg-surface shadow-sm" />
+        <div className="h-[220px] animate-pulse rounded-card border border-black/[0.08] bg-surface shadow-sm" />
+      </div>
     </div>
   );
 }

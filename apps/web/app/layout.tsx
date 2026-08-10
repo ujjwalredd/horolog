@@ -1,26 +1,41 @@
 import type { Metadata } from "next";
-import { Bodoni_Moda, JetBrains_Mono, Jost } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-// Vendored at build time (next/font), not fetched from Google's CDN at
-// runtime — "no telemetry, nothing leaves the machine" (login/page.tsx)
-// should also be true of the UI's own asset loading. Weights match what the
-// old <link>/@import tags requested, so nothing renders differently.
-const jost = Jost({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+// Vendored as real files under app/fonts/ rather than next/font/google:
+// google's loader still fetches these .woff2s from fonts.gstatic.com at
+// *build* time even though nothing touches it at runtime, so a build on a
+// network-restricted CI runner (or any offline environment) fails outright —
+// this happened for real. Vendoring the files means the build needs zero
+// network access, ever. Weights match what was requested before, so nothing
+// renders differently — see app/fonts/README.md for provenance if these
+// ever need re-fetching (a new weight, a font update).
+const jost = localFont({
+  src: [
+    { path: "./fonts/jost/jost-300.woff2", weight: "300", style: "normal" },
+    { path: "./fonts/jost/jost-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/jost/jost-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/jost/jost-600.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/jost/jost-700.woff2", weight: "700", style: "normal" },
+  ],
   variable: "--font-jost",
   display: "swap",
 });
-const bodoniModa = Bodoni_Moda({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+const bodoniModa = localFont({
+  src: [
+    { path: "./fonts/bodoni-moda/bodoni-moda-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/bodoni-moda/bodoni-moda-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/bodoni-moda/bodoni-moda-600.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/bodoni-moda/bodoni-moda-700.woff2", weight: "700", style: "normal" },
+  ],
   variable: "--font-bodoni-moda",
   display: "swap",
 });
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
+const jetbrainsMono = localFont({
+  src: [
+    { path: "./fonts/jetbrains-mono/jetbrains-mono-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/jetbrains-mono/jetbrains-mono-500.woff2", weight: "500", style: "normal" },
+  ],
   variable: "--font-jetbrains-mono",
   display: "swap",
 });

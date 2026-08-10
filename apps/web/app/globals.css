@@ -16,7 +16,7 @@
 
   --color-fg: #0c0a09;           /* Stone 950 */
   --color-fg-muted: #57534e;     /* Stone 600 */
-  --color-fg-subtle: #a8a29e;    /* Stone 400 */
+  --color-fg-subtle: #78716c;    /* Stone 500 — 4.59:1 on --color-bg, passes WCAG AA (Stone 400 was 2.41:1, a real failure) */
 
   --color-line: rgba(28, 25, 23, 0.08); /* Stone 900 with low opacity */
   --color-line-strong: rgba(28, 25, 23, 0.15);
