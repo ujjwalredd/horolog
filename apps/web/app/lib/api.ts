@@ -57,6 +57,9 @@ export interface Intent {
   period_days: number | null;
   min_chunk_minutes: number;
   max_chunk_minutes: number;
+  /** Slot ranges (not clock times) other attendees are busy - present only
+   *  on meeting-kind intents. Its length is the useful part for display. */
+  blocked_slots?: [number, number][];
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -88,18 +91,6 @@ export const api = {
     request<{ intent: Intent }>("/api/capture", {
       method: "POST",
       body: JSON.stringify({ text, provider, model, api_key: apiKey }),
-    }),
-  createIntent: (intent: {
-    title: string;
-    kind?: IntentKind;
-    priority?: Priority;
-    minutes_per_period: number;
-    min_chunk_minutes?: number;
-    max_chunk_minutes?: number;
-  }) =>
-    request<Intent>("/api/intents", {
-      method: "POST",
-      body: JSON.stringify(intent),
     }),
   setBusy: (events: Omit<Busy, "source">[]) =>
     request<{ events: number; blocks: number }>("/api/busy", {
@@ -221,6 +212,14 @@ export const booking = {
 
 export const createIntent = (body: Record<string, unknown>) =>
   request<Intent>("/api/intents", { method: "POST", body: JSON.stringify(body) });
+
+/** A span one attendee is busy - the solver treats these as blocked only for
+ *  the meeting requirement they're attached to, never the shared calendar. */
+export interface AttendeeBusy {
+  start: string;
+  end: string;
+  attendee?: string;
+}
 
 export const KIND_ORDER: IntentKind[] = ["focus", "task", "habit", "meeting", "buffer"];
 

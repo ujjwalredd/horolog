@@ -506,3 +506,54 @@ async def test_google_sync_mirrors_real_events_into_busy(
 
     plan = (await client.get("/api/plan")).json()
     assert any(b["source"] == "google" and "Board meeting" in b["label"] for b in plan["busy"])
+
+
+# --------------------------------------------------------------- background sync
+
+
+@pytest.mark.asyncio
+async def test_background_sync_is_a_noop_with_nothing_connected(db: AsyncSession) -> None:
+    from horolog.api import _sync_connected_calendars
+
+    await _sync_connected_calendars(db)  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_background_sync_skips_a_failed_provider_without_stopping_the_next(
+    client: AsyncClient, mock_http: Callable[..., None], db: AsyncSession
+) -> None:
+    """One provider's outage must not stop the loop from reaching the other,
+    and must not propagate out of the tick that runs it."""
+    from horolog.api import _sync_connected_calendars
+
+    await oauth.save_token(db, "google", {"access_token": "tok"})
+    await oauth.save_token(db, "outlook", {"access_token": "tok"})
+
+    base_day = datetime.now(UTC) + timedelta(days=1)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "googleapis.com" in str(request.url):
+            return httpx.Response(500, json={"error": "boom"})
+        return httpx.Response(
+            200,
+            json={
+                "value": [
+                    {
+                        "id": "o1",
+                        "subject": "1:1",
+                        "showAs": "busy",
+                        "isCancelled": False,
+                        "start": {"dateTime": base_day.replace(hour=10, minute=0).isoformat()},
+                        "end": {"dateTime": base_day.replace(hour=10, minute=30).isoformat()},
+                    }
+                ]
+            },
+        )
+
+    mock_http(handler)
+    await _sync_connected_calendars(db)  # google 500s; must not raise
+
+    plan = (await client.get("/api/plan")).json()
+    assert any(b["source"] == "outlook" and "1:1" in b["label"] for b in plan["busy"]), (
+        "outlook must still sync even though google failed in the same tick"
+    )

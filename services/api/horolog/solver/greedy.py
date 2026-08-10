@@ -10,6 +10,7 @@ here:
     time-of-day           -> window ranking
     fragmentation         -> largest chunks first
     per-day caps          -> a counter
+    energy                -> sort key, contested-slot tie-break only
 
 Measured against a CP-SAT model of the same problem this lands within 0.6% of
 the solver's answer on every instance tried, including adversarial ones, in
@@ -22,7 +23,7 @@ from bisect import insort
 from collections.abc import Sequence
 
 from horolog.domain.events import BusyInterval
-from horolog.domain.intent import KIND_RANK
+from horolog.domain.intent import KIND_RANK, EnergyLevel
 from horolog.domain.plan import ScheduledBlock
 from horolog.domain.time import day_start
 from horolog.solver.expand import Requirement
@@ -31,6 +32,16 @@ Spans = Sequence[tuple[int, int]]
 
 Placement = dict[tuple[int, int], tuple[int, int]]
 """(requirement index, chunk index) -> (start slot, size)."""
+
+_ENERGY_RANK: dict[EnergyLevel | None, int] = {
+    EnergyLevel.HIGH: 0,
+    EnergyLevel.MEDIUM: 1,
+    EnergyLevel.LOW: 2,
+}
+"""Contested-slot tie-break only (Pass 2) - a demanding task gets first pick
+among otherwise-equal requirements. Missing/medium energy ranks the same as
+today's key did before this field existed, so unset-energy input sorts
+identically to before."""
 
 
 class _Occupancy:
@@ -96,6 +107,10 @@ def _window_order(
     Staying put beats everything, matching the perturbation term; after that,
     proximity to the user's preferred time of day; then simply earliest.
     """
+    # ponytail: energy doesn't rank windows here - every intent produces one
+    # daily_windows entry per day today, so a within-window morning bias would
+    # have nothing to distinguish. Energy's only effect is the Pass-2 contention
+    # tie-break in construct(). Revisit if a kind ever emits >1 window/day.
     prior = previous.get((req.intent_id, req.occurrence, chunk))
 
     def rank(index: int) -> tuple[int, int, int]:
@@ -168,6 +183,7 @@ def construct(
         key=lambda i: (
             requirements[i].priority,
             KIND_RANK[requirements[i].kind],
+            _ENERGY_RANK.get(requirements[i].energy, 1),
             requirements[i].due_slot if requirements[i].due_slot is not None else 1 << 30,
             requirements[i].intent_id,
         ),

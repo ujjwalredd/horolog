@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Glyph, KIND_LABEL } from "@/app/components/Glyph";
 import type { Block, Busy, Priority } from "@/app/lib/api";
 import { formatDuration, minutesBetween } from "@/app/lib/api";
@@ -63,6 +64,16 @@ export function Grid({ days, blocks, busy, selected, onSelect }: GridProps) {
     (_, i) => DAY_START_H + i,
   );
   const todayStr = new Date().toDateString();
+  const todayKey = new Date().toISOString().slice(0, 10);
+
+  // Ticks once a minute so the "now" line drifts without a full data reload.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const nowTop = offsetPx(now.toISOString());
+  const showNowLine = nowTop >= 0 && nowTop <= HEIGHT;
 
   return (
     <div className="scroll-x scroll-mask-x rounded-card border border-black/[0.08] bg-surface shadow-sm transition-shadow hover:shadow-md">
@@ -134,6 +145,18 @@ export function Grid({ days, blocks, busy, selected, onSelect }: GridProps) {
                     className="border-b border-black/[0.04] last:border-b-0"
                   />
                 ))}
+
+                {/* Live "Now" Indicator */}
+                {showNowLine && key === todayKey && (
+                  <div
+                    aria-hidden
+                    style={{ top: nowTop }}
+                    className="pointer-events-none absolute inset-x-0 z-20 flex items-center transition-[top] duration-500 ease-out motion-reduce:transition-none"
+                  >
+                    <span className="-ml-1 h-2 w-2 shrink-0 rounded-full bg-danger" />
+                    <span className="h-px w-full bg-danger/70" />
+                  </div>
+                )}
 
                 {/* External Real Meetings (Opaque Sunk Blocks) */}
                 {dayBusy.map((event, i) => {

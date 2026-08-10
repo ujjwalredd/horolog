@@ -64,6 +64,13 @@ class Settings(BaseSettings):
 
     auto_buffer_minutes: int = Field(default=15, ge=5, le=60)
 
+    sync_interval_minutes: int = Field(default=15, ge=1, le=1440)
+    """How often the background loop re-mirrors connected calendar providers
+    (Google, Outlook) without the user clicking Sync. ICS and CalDAV aren't
+    included — their credentials are never persisted, only ever supplied on
+    the request that syncs them, so there is nothing for a background loop to
+    hold onto for those two."""
+
     llm_provider: Literal["openai", "anthropic"] = "openai"
     """`openai` covers every OpenAI-compatible server — Ollama, vLLM, SGLang,
     llama.cpp, OpenAI itself. `anthropic` uses the official Claude SDK, which

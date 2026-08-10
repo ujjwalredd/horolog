@@ -54,6 +54,31 @@ async def test_create_intent_schedules_it(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_focus_intent_round_trips(client: AsyncClient) -> None:
+    """The habits page used to mislabel every intent it created as a habit,
+    even the ones its own presets called 'focus' - this pins the fix."""
+    created = await client.post(
+        "/api/intents",
+        json={
+            "title": "Deep work",
+            "kind": "focus",
+            "priority": 2,
+            "energy": "high",
+            "minutes_per_period": 600,
+            "period_days": 7,
+            "min_chunk_minutes": 120,
+            "max_chunk_minutes": 120,
+        },
+    )
+    assert created.status_code == 201
+
+    intents = (await client.get("/api/intents")).json()
+    mine = next(i for i in intents if i["title"] == "Deep work")
+    assert mine["kind"] == "focus"
+    assert mine["energy"] == "high"
+
+
+@pytest.mark.asyncio
 async def test_busy_events_push_work_aside(client: AsyncClient) -> None:
     await client.post(
         "/api/intents",

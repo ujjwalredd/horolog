@@ -39,6 +39,7 @@ def draft(**overrides: Any) -> dict[str, Any]:
         "title": "Write the design doc",
         "kind": "task",
         "priority": 2,
+        "energy": None,
         "minutes_per_period": 180,
         "period_days": None,
         "min_chunk_minutes": 60,

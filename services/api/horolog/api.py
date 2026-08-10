@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import sys
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -265,7 +266,13 @@ bus = Broadcast()
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await init_db()
-    yield
+    sync_task = asyncio.create_task(_sync_loop())
+    try:
+        yield
+    finally:
+        sync_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await sync_task
 
 
 app = FastAPI(title="Horolog", version="0.1.0", lifespan=lifespan)
@@ -884,6 +891,55 @@ async def stream() -> EventSourceResponse:
 # --------------------------------------------------------------------------
 # Internals
 # --------------------------------------------------------------------------
+
+
+async def _sync_connected_calendars(db: AsyncSession) -> None:
+    """Re-mirror every connected Google/Outlook account.
+
+    Same `_mirror()` path a manual Sync click uses, so this behaves identically
+    from the frontend's perspective (SSE broadcast included) — the only
+    difference is what triggers it. One provider failing must never stop the
+    other or the next tick, so failures are caught here rather than raised.
+
+    Deliberately broad: `_mirror` only ever *means* to raise `HTTPException`
+    (it wraps every `SyncError` from the provider), but an upstream API
+    returning a malformed body raises `json.JSONDecodeError` before it ever
+    becomes a `SyncError` — narrower than `Exception` and this loop silently
+    dies on the first bad response and never recovers, with no request/response
+    cycle left afterwards for anyone to notice from. A scheduled tick must
+    survive whatever a single provider does to it.
+    """
+    connected = await oauth.connected_providers(db)
+    for provider_name in oauth.CALENDAR_PROVIDERS:
+        if provider_name not in connected:
+            continue
+        token = await oauth.valid_access_token(db, settings(), provider_name)
+        if not token:
+            continue
+        provider: CalendarProvider = (
+            GoogleCalendarProvider(token, settings().zone)
+            if provider_name == "google"
+            else OutlookCalendarProvider(token, settings().zone)
+        )
+        try:
+            await _mirror(db, provider, provider_name)
+        except Exception as exc:  # see docstring: a scheduled tick must never kill the loop
+            print(f"background sync: {provider_name} failed: {exc}", file=sys.stderr)
+
+
+async def _sync_loop() -> None:
+    """Background heartbeat started from `lifespan()`.
+
+    A fresh session per tick, not a request-scoped one — nothing here runs
+    inside a request. `asynccontextmanager` turns the same `session()`
+    generator the HTTP layer uses via `Depends` into a plain context manager,
+    so this needs no new session-creation code in `db.py`.
+    """
+    interval_s = settings().sync_interval_minutes * 60
+    while True:
+        await asyncio.sleep(interval_s)
+        async with asynccontextmanager(session)() as db:
+            await _sync_connected_calendars(db)
 
 
 async def _mirror(db: AsyncSession, provider: CalendarProvider, source: str) -> dict[str, int]:

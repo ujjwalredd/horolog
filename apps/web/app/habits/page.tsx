@@ -9,17 +9,24 @@ import {
   api,
   createIntent,
   formatDuration,
+  type EnergyLevel,
   type Intent,
+  type IntentKind,
   type Plan,
   type Priority,
 } from "@/app/lib/api";
-import { Plus, Trash2, RotateCcw, AlertTriangle, Sparkles, Clock } from "lucide-react";
+import { Plus, Trash2, RotateCcw, AlertTriangle, Sparkles, Clock, Zap } from "lucide-react";
+
+/** Focus needs a >=90m minimum sitting (see docs/ARCHITECTURE.md's model
+ *  table: `kind=focus, weekly, >=90m chunks`), enforced with a floor rather
+ *  than by mutating the visible Duration input the user is controlling. */
+const FOCUS_MIN_CHUNK = 90;
 
 const PRESETS = [
-  { title: "Gym", times: 3, minutes: 60, from: 600, to: 960, priority: 4 },
-  { title: "Deep work", times: 5, minutes: 120, from: 540, to: 720, priority: 2, kind: "focus" },
-  { title: "Lunch", times: 5, minutes: 45, from: 720, to: 840, priority: 3 },
-  { title: "Inbox & admin", times: 5, minutes: 30, from: 960, to: 1080, priority: 4 },
+  { title: "Gym", kind: "habit", times: 3, weeklyHours: 5, minutes: 60, from: 600, to: 960, priority: 4 },
+  { title: "Deep work", kind: "focus", times: 5, weeklyHours: 10, minutes: 120, from: 540, to: 720, priority: 2 },
+  { title: "Lunch", kind: "habit", times: 5, weeklyHours: 5, minutes: 45, from: 720, to: 840, priority: 3 },
+  { title: "Inbox & admin", kind: "habit", times: 5, weeklyHours: 5, minutes: 30, from: 960, to: 1080, priority: 4 },
 ] as const;
 
 function clock(minutes: number): string {
@@ -43,11 +50,14 @@ export default function Habits() {
   const [saving, setSaving] = useState(false);
 
   const [title, setTitle] = useState("");
+  const [kind, setKind] = useState<IntentKind>("habit");
   const [times, setTimes] = useState(3);
+  const [weeklyHours, setWeeklyHours] = useState(5);
   const [minutes, setMinutes] = useState(60);
   const [from, setFrom] = useState(600);
   const [to, setTo] = useState(960);
   const [priority, setPriority] = useState<Priority>(4);
+  const [energy, setEnergy] = useState<EnergyLevel | "">("");
 
   const load = useCallback(async () => {
     try {
@@ -69,7 +79,8 @@ export default function Habits() {
     [intents],
   );
 
-  const windowTooSmall = to - from < minutes;
+  const chunkMinutes = kind === "focus" ? Math.max(minutes, FOCUS_MIN_CHUNK) : minutes;
+  const windowTooSmall = to - from < chunkMinutes;
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -79,20 +90,21 @@ export default function Habits() {
     try {
       await createIntent({
         title: title.trim(),
-        kind: "habit",
+        kind,
         priority,
-        minutes_per_period: times * minutes,
+        energy: energy || undefined,
+        minutes_per_period: kind === "focus" ? weeklyHours * 60 : times * minutes,
         period_days: 7,
-        min_chunk_minutes: minutes,
-        max_chunk_minutes: minutes,
-        max_per_day: 1,
+        min_chunk_minutes: chunkMinutes,
+        max_chunk_minutes: chunkMinutes,
+        max_per_day: kind === "focus" ? undefined : 1,
         window_start_min: from,
         window_end_min: to,
       });
       setTitle("");
       await load();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not save that habit.");
+      setError(caught instanceof Error ? caught.message : "Could not save that routine.");
     } finally {
       setSaving(false);
     }
@@ -102,7 +114,7 @@ export default function Habits() {
     <Shell onPlanChange={load}>
       <main className="mx-auto max-w-[920px] px-6 py-8">
         <header className="mb-8">
-          <h1 className="text-[28px] font-bold text-fg">Habits & Routines</h1>
+          <h1 className="text-[28px] font-bold text-fg">Habits & Focus Time</h1>
           <p className="mt-1 text-[13.5px] text-fg-muted">
             Recurring commitments placed around real calendar events and moved automatically when meetings land.
           </p>
@@ -120,9 +132,31 @@ export default function Habits() {
           className="mb-9 overflow-hidden rounded-card border border-black/[0.08] bg-surface shadow-sm transition-shadow hover:shadow-md"
         >
           <div className="border-b border-black/[0.06] px-6 py-4.5">
-            <label htmlFor="habit-title" className="mb-2 block text-[12px] font-semibold tracking-wider uppercase text-fg-muted">
-              Routine Title
-            </label>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <label htmlFor="habit-title" className="block text-[12px] font-semibold tracking-wider uppercase text-fg-muted">
+                Routine Title
+              </label>
+              <div className="flex items-center gap-1 rounded-lg bg-sunk/60 p-0.5">
+                {(["habit", "focus"] as const).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    aria-pressed={kind === k}
+                    onClick={() => {
+                      setKind(k);
+                      // Keep the Duration select on a value its own option
+                      // list actually contains when switching modes by hand.
+                      setMinutes(k === "focus" ? Math.max(FOCUS_MIN_CHUNK, minutes) : Math.min(120, minutes));
+                    }}
+                    className={`rounded-md px-2.5 py-1 text-[11.5px] font-semibold capitalize transition-all duration-150 ${
+                      kind === k ? "bg-surface text-fg shadow-sm" : "text-fg-muted hover:text-fg"
+                    }`}
+                  >
+                    {k}
+                  </button>
+                ))}
+              </div>
+            </div>
             <input
               id="habit-title"
               value={title}
@@ -138,7 +172,9 @@ export default function Habits() {
                   type="button"
                   onClick={() => {
                     setTitle(preset.title);
+                    setKind(preset.kind);
                     setTimes(preset.times);
+                    setWeeklyHours(preset.weeklyHours);
                     setMinutes(preset.minutes);
                     setFrom(preset.from);
                     setTo(preset.to);
@@ -154,23 +190,39 @@ export default function Habits() {
           </div>
 
           <div className="grid gap-5 px-6 py-5 sm:grid-cols-2 lg:grid-cols-4">
-            <Field label="Frequency" hint="times / week">
-              <input
-                type="number"
-                min={1}
-                max={14}
-                value={times}
-                onChange={(e) => setTimes(Math.max(1, Number(e.target.value)))}
-                className="tabular h-10 w-full rounded-xl border border-black/[0.08] bg-bg px-3.5 text-[14px] font-semibold outline-none focus:border-accent"
-              />
-            </Field>
-            <Field label="Duration" hint="per session">
+            {kind === "focus" ? (
+              <Field label="Hours per week" hint="weekly target">
+                <input
+                  type="number"
+                  min={1}
+                  max={40}
+                  value={weeklyHours}
+                  onChange={(e) => setWeeklyHours(Math.max(1, Number(e.target.value)))}
+                  className="tabular h-10 w-full rounded-xl border border-black/[0.08] bg-bg px-3.5 text-[14px] font-semibold outline-none focus:border-accent"
+                />
+              </Field>
+            ) : (
+              <Field label="Frequency" hint="times / week">
+                <input
+                  type="number"
+                  min={1}
+                  max={14}
+                  value={times}
+                  onChange={(e) => setTimes(Math.max(1, Number(e.target.value)))}
+                  className="tabular h-10 w-full rounded-xl border border-black/[0.08] bg-bg px-3.5 text-[14px] font-semibold outline-none focus:border-accent"
+                />
+              </Field>
+            )}
+            <Field
+              label={kind === "focus" ? "Max sitting" : "Duration"}
+              hint={kind === "focus" ? `per sitting, min ${FOCUS_MIN_CHUNK}` : "per session"}
+            >
               <select
                 value={minutes}
                 onChange={(e) => setMinutes(Number(e.target.value))}
                 className="tabular h-10 w-full rounded-xl border border-black/[0.08] bg-bg px-3.5 text-[14px] font-semibold outline-none focus:border-accent"
               >
-                {[15, 30, 45, 60, 90, 120].map((m) => (
+                {(kind === "focus" ? [90, 120, 150, 180] : [15, 30, 45, 60, 90, 120]).map((m) => (
                   <option key={m} value={m}>
                     {m} min
                   </option>
@@ -213,6 +265,22 @@ export default function Habits() {
                     aria-hidden
                   />
                   {PRIORITY_NAME[p]}
+                </button>
+              ))}
+              <span className="mx-1 h-4 w-px bg-black/[0.08]" aria-hidden />
+              {(["high", "medium", "low"] as const).map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={() => setEnergy(energy === level ? "" : level)}
+                  aria-pressed={energy === level}
+                  title={`${level} energy`}
+                  className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold capitalize transition-all duration-150 ${
+                    energy === level ? "bg-surface shadow-sm border border-black/[0.08] text-fg" : "text-fg-muted hover:bg-surface/60"
+                  }`}
+                >
+                  <Zap size={12} className={energy === level ? "text-accent" : ""} />
+                  {level}
                 </button>
               ))}
             </div>

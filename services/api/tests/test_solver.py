@@ -12,7 +12,7 @@ from itertools import pairwise
 import pytest
 
 from horolog.domain.events import BusyInterval
-from horolog.domain.intent import DailyWindow, Intent, IntentKind, Priority
+from horolog.domain.intent import DailyWindow, EnergyLevel, Intent, IntentKind, Priority
 from horolog.domain.plan import Plan
 from horolog.domain.time import SLOTS_PER_DAY, SLOTS_PER_HOUR, minutes_to_slots
 from horolog.solver.expand import expand
@@ -117,6 +117,25 @@ def test_higher_priority_wins_a_contested_slot() -> None:
     assert [u.intent_id for u in plan.unmet] == ["trivial"]
 
 
+def test_high_energy_wins_a_contested_slot_among_equals() -> None:
+    """Same priority, same kind, one open hour: the demanding one goes first.
+
+    This is the only place `energy` is allowed to have any effect at all - it
+    must never override priority or kind, only break a tie between them."""
+    only_an_hour = [DailyWindow(start_min=10 * 60, end_min=11 * 60)]
+    demanding = task(
+        "demanding", 60, Priority.P3, 60, 60, daily_windows=only_an_hour, energy=EnergyLevel.HIGH
+    )
+    ordinary = task("ordinary", 60, Priority.P3, 60, 60, daily_windows=only_an_hour)
+
+    plan = solve([demanding, ordinary], [], SLOTS_PER_DAY)
+
+    assert_sound(plan, [])
+    scheduled = {b.intent_id for b in plan.blocks}
+    assert scheduled == {"demanding"}
+    assert [u.intent_id for u in plan.unmet] == ["ordinary"]
+
+
 def test_resolve_with_nothing_changed_is_a_fixed_point() -> None:
     """The headline stability guarantee: re-planning an unchanged week changes nothing.
 
@@ -173,6 +192,21 @@ def test_oversubscription_reports_shortfall_instead_of_failing() -> None:
 
     assert_sound(plan, [])
     assert plan.unmet, "an over-subscribed calendar must report unmet demand"
+
+
+def test_oversized_task_splits_into_bounded_chunks() -> None:
+    """A task bigger than one max_chunk must split into multiple blocks, each
+    within [min_chunk, max_chunk], with nothing left unmet on an empty calendar."""
+    intent = task("big", minutes=360, min_chunk=60, max_chunk=120)  # 3x max_chunk
+    plan = solve([intent], [], WEEK)
+
+    assert_sound(plan, [])
+    mine = [b for b in plan.blocks if b.intent_id == "big"]
+    assert len(mine) > 1, "a 360-minute task at max_chunk=120 must split into more than one block"
+    for block in mine:
+        assert minutes_to_slots(60) <= block.slots <= minutes_to_slots(120)
+    assert sum(b.slots for b in mine) == minutes_to_slots(360)
+    assert not plan.unmet
 
 
 def test_habit_repeats_once_per_period() -> None:

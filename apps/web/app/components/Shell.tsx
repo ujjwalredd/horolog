@@ -6,8 +6,10 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Calendar,
+  Clock,
   Inbox,
   RotateCcw,
+  Users,
   BarChart3,
   Link2,
   Sparkles,
@@ -18,9 +20,11 @@ import {
 import { CommandBar } from "@/app/components/CommandBar";
 
 const NAV = [
+  { href: "/time", label: "Time", icon: Clock },
   { href: "/planner", label: "Planner", icon: Calendar },
   { href: "/inbox", label: "Task inbox", icon: Inbox },
   { href: "/habits", label: "Habits", icon: RotateCcw },
+  { href: "/meetings", label: "Meetings", icon: Users },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/connect", label: "Calendars", icon: Link2 },
 ] as const;
