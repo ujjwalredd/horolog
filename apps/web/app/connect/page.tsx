@@ -43,7 +43,17 @@ const CALENDAR_PROVIDERS: { id: Provider; label: string; icon: React.ReactNode }
   },
 ];
 
-const TRACKER_PROVIDERS: { id: Provider; label: string; className: string }[] = [
+const TRACKER_PROVIDERS: {
+  id: Provider;
+  label: string;
+  className: string;
+  /** No OAuth app exists for this provider (see integrations/<id>.py's
+   *  docstring for why) — render the paste-a-credential input only, never
+   *  the OAuth "Connect" button, which would point at a route that doesn't
+   *  exist. */
+  keyOnly?: boolean;
+  placeholder?: string;
+}[] = [
   { id: "linear", label: "Linear", className: "bg-[#5e6ad2] hover:bg-[#4b55a8] text-white" },
   {
     id: "todoist",
@@ -51,6 +61,27 @@ const TRACKER_PROVIDERS: { id: Provider; label: string; className: string }[] = 
     className: "border border-red-200 bg-red-50/40 hover:bg-red-50 text-[#e44332]",
   },
   { id: "github", label: "GitHub", className: "bg-slate-900 hover:bg-slate-800 text-white" },
+  {
+    id: "notion",
+    label: "Notion",
+    className: "bg-black hover:bg-neutral-800 text-white",
+    keyOnly: true,
+    placeholder: "database_id:integration_token",
+  },
+  {
+    id: "clickup",
+    label: "ClickUp",
+    className: "bg-[#7b68ee] hover:bg-[#6a58d6] text-white",
+    keyOnly: true,
+    placeholder: "team_id:api_token",
+  },
+  {
+    id: "jira",
+    label: "Jira",
+    className: "bg-[#0052cc] hover:bg-[#0047b3] text-white",
+    keyOnly: true,
+    placeholder: "site:email:api_token",
+  },
 ];
 
 export default function Connect() {
@@ -125,6 +156,15 @@ export default function Connect() {
         label = "tasks";
       } else if (provider === "github") {
         count = (await sync.github(credential)).issues;
+        label = "issues";
+      } else if (provider === "notion") {
+        count = (await sync.notion(credential ?? "")).tasks;
+        label = "tasks";
+      } else if (provider === "clickup") {
+        count = (await sync.clickup(credential ?? "")).tasks;
+        label = "tasks";
+      } else if (provider === "jira") {
+        count = (await sync.jira(credential ?? "")).issues;
         label = "issues";
       }
       setResult({ ok: true, count, label });
@@ -350,21 +390,23 @@ export default function Connect() {
               const isConnected = connected[p.id];
               return (
                 <div key={p.id} className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => (isConnected ? runSync(p.id) : (window.location.href = `/api/auth/${p.id}`))}
-                    disabled={pending !== null}
-                    className={`flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-[13.5px] font-semibold shadow-sm transition-all disabled:opacity-50 ${p.className}`}
-                  >
-                    <span>
-                      {pending === p.id
-                        ? "Working…"
-                        : isConnected
-                          ? `Re-sync ${p.label}`
-                          : `Connect ${p.label}`}
-                    </span>
-                    {isConnected && <CheckCircle2 size={15} />}
-                  </button>
+                  {!p.keyOnly && (
+                    <button
+                      type="button"
+                      onClick={() => (isConnected ? runSync(p.id) : (window.location.href = `/api/auth/${p.id}`))}
+                      disabled={pending !== null}
+                      className={`flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-[13.5px] font-semibold shadow-sm transition-all disabled:opacity-50 ${p.className}`}
+                    >
+                      <span>
+                        {pending === p.id
+                          ? "Working…"
+                          : isConnected
+                            ? `Re-sync ${p.label}`
+                            : `Connect ${p.label}`}
+                      </span>
+                      {isConnected && <CheckCircle2 size={15} />}
+                    </button>
+                  )}
                   {isConnected && (
                     <button
                       type="button"
@@ -377,12 +419,17 @@ export default function Connect() {
                       <Unplug size={15} />
                     </button>
                   )}
-                  <span className="text-fg-subtle">or</span>
+                  {!p.keyOnly && <span className="text-fg-subtle">or</span>}
+                  {p.keyOnly && (
+                    <span className="flex h-11 items-center gap-2 rounded-xl px-4 text-[13.5px] font-semibold text-fg-muted">
+                      {p.label}
+                    </span>
+                  )}
                   <input
                     type="password"
                     value={trackerKeys[p.id] ?? ""}
                     onChange={(e) => setTrackerKeys({ ...trackerKeys, [p.id]: e.target.value })}
-                    placeholder="paste a personal API key"
+                    placeholder={p.placeholder ?? "paste a personal API key"}
                     className="h-11 min-w-0 flex-1 rounded-xl border border-black/[0.08] bg-bg px-3.5 text-[13px] font-medium outline-none focus:border-accent"
                   />
                   <button

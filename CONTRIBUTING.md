@@ -127,7 +127,7 @@ rather than inventing a new one.
    `apps/web/app/lib/api.ts` and a button entry in
    `apps/web/app/connect/page.tsx`'s `CALENDAR_PROVIDERS` array.
 
-### A tracker integration (Linear/Todoist/GitHub today)
+### A tracker integration (Linear/Todoist/GitHub/Notion/ClickUp/Jira today)
 
 1. A Pydantic model for one task + a `fetch_*` function + one `*Error`
    exception subclassing `RuntimeError`, in a new file under
@@ -140,7 +140,14 @@ rather than inventing a new one.
 3. If OAuth-based, same `oauth.py`/`settings.py`/`.env.example` steps as
    above, added to `TRACKER_PROVIDERS` instead of `CALENDAR_PROVIDERS`. A
    personal-API-key tracker (no OAuth app needed) can skip straight to the
-   endpoint — see how Todoist's pasted-key path works in `sync_todoist`.
+   endpoint — see how Todoist's pasted-key path works in `sync_todoist`, or
+   `notion.py`/`clickup.py`/`jira.py` for a *key-only* tracker with no OAuth
+   path at all (worth checking first: does the provider's own API even fit
+   OAuth cleanly, or — like Jira's cloud-id indirection — is a pasted
+   credential actually the better-fitting choice? See `jira.py`'s docstring
+   for a real example of that trade-off). A credential needing more than one
+   part (e.g. Jira's `site:email:api_token`) is packed into the single pasted
+   string and split inside `fetch_*` — no frontend change needed.
 
 ---
 

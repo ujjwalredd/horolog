@@ -12,7 +12,8 @@ import { CtaSection } from "@/components/ui/cta-section"
 import { Footer } from "@/components/ui/footer"
 
 const INTEGRATIONS = [
-  "Google Calendar", "Outlook / Exchange", "Apple Calendar", "iCalendar", "CalDAV", "Linear", "Todoist", "GitHub"
+  "Google Calendar", "Outlook / Exchange", "Apple Calendar", "iCalendar", "CalDAV",
+  "Linear", "Todoist", "GitHub", "Notion", "ClickUp", "Jira", "Zoom",
 ]
 
 const GithubIcon = (props: React.SVGProps<SVGSVGElement>) => (

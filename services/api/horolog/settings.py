@@ -119,6 +119,15 @@ class Settings(BaseSettings):
     github_client_id: str = ""
     github_client_secret: str = ""
 
+    zoom_account_id: str = ""
+    zoom_client_id: str = ""
+    zoom_client_secret: str = ""
+    """A Server-to-Server OAuth app (marketplace.zoom.us), not the
+    authorization-code flow the providers above use — see
+    integrations/zoom.py for why. Leaving these blank simply means Smart
+    Meetings are created without a Zoom link; every other feature is
+    unaffected."""
+
     @field_validator("timezone")
     @classmethod
     def _known_zone(cls, value: str) -> str:

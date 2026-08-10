@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import sys
 import time
 import uuid
@@ -49,11 +50,15 @@ from horolog.domain.time import (
     minutes_to_slots,
     to_slot,
 )
+from horolog.integrations.clickup import ClickUpError, fetch_clickup_tasks
 from horolog.integrations.github import GithubError, fetch_github_issues
 from horolog.integrations.google_calendar import GoogleCalendarProvider
+from horolog.integrations.jira import JiraError, fetch_jira_issues
 from horolog.integrations.linear import LinearError, fetch_linear_issues
+from horolog.integrations.notion import NotionError, fetch_notion_tasks
 from horolog.integrations.outlook_calendar import OutlookCalendarProvider
 from horolog.integrations.todoist import TodoistError, fetch_todoist_tasks
+from horolog.integrations.zoom import ZoomError, create_meeting, delete_meeting
 from horolog.llm import (
     AnthropicProvider,
     ExtractionFailed,
@@ -72,6 +77,8 @@ from horolog.providers import (
 )
 from horolog.settings import settings
 from horolog.solver.solve import merge_busy, solve
+
+logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------
 # Time origin
@@ -310,6 +317,20 @@ async def create_intent(body: IntentIn, db: AsyncSession = Depends(session)) -> 
         # Domain validation is the real gate; surface its message rather than a
         # generic 500, because it explains exactly why the intent is impossible.
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if intent.kind == IntentKind.MEETING:
+        cfg = settings()
+        if cfg.zoom_account_id and cfg.zoom_client_id and cfg.zoom_client_secret:
+            # Best-effort: a Zoom outage or bad credential must never stop a
+            # meeting from being scheduled, only leave it without a link.
+            try:
+                meeting = await create_meeting(cfg, intent.title)
+                intent = intent.model_copy(
+                    update={"zoom_meeting_id": meeting.id, "zoom_join_url": meeting.join_url}
+                )
+            except ZoomError as exc:
+                logger.warning("Zoom meeting creation failed for %r: %s", intent.title, exc)
+
     db.add(IntentRow(id=ident, payload=intent.model_dump(mode="json")))
     await db.commit()
     await _replan(db)
@@ -370,8 +391,21 @@ async def delete_intent(intent_id: str, db: AsyncSession = Depends(session)) -> 
     row = await db.get(IntentRow, intent_id)
     if row is None:
         raise HTTPException(status_code=404, detail=f"no intent {intent_id!r}")
+    zoom_meeting_id = row.payload.get("zoom_meeting_id")
     await db.delete(row)
     await db.commit()
+
+    if zoom_meeting_id:
+        cfg = settings()
+        if cfg.zoom_account_id and cfg.zoom_client_id and cfg.zoom_client_secret:
+            # Best-effort cleanup — an unreachable Zoom must never stop the
+            # intent itself from being deleted; it just leaves an orphaned
+            # meeting behind in the Zoom account.
+            try:
+                await delete_meeting(cfg, zoom_meeting_id)
+            except ZoomError as exc:
+                logger.warning("Could not remove Zoom meeting %s: %s", zoom_meeting_id, exc)
+
     await _replan(db)
     return Response(status_code=204)
 
@@ -476,6 +510,9 @@ async def sync_caldav(body: CalDavSyncIn, db: AsyncSession = Depends(session)) -
 LINEAR_PREFIX = "linear:"
 TODOIST_PREFIX = "todoist:"
 GITHUB_PREFIX = "github:"
+NOTION_PREFIX = "notion:"
+CLICKUP_PREFIX = "clickup:"
+JIRA_PREFIX = "jira:"
 
 
 class LinearSyncIn(BaseModel):
@@ -597,6 +634,70 @@ async def sync_github(body: TokenSyncIn, db: AsyncSession = Depends(session)) ->
         GITHUB_PREFIX,
         "GitHub",
         [(i.id, f"#{i.number} {i.title}", Priority.P2, i.minutes) for i in issues],
+    )
+    plan = await _replan(db)
+    return {"issues": count, "blocks": len(plan.blocks)}
+
+
+async def _require_pasted_credential(body: TokenSyncIn, provider: str) -> str:
+    """These three trackers have no OAuth app to fall back to (see
+    integrations/{notion,clickup,jira}.py's docstrings for why) — a pasted
+    credential is the only path, so its absence is the caller's mistake to
+    fix, not a 409 "go connect it" that implies a button that doesn't exist."""
+    if not body.token:
+        raise HTTPException(status_code=422, detail=f"paste a {provider} credential first")
+    return body.token
+
+
+@app.post("/api/sync/notion")
+async def sync_notion(body: TokenSyncIn, db: AsyncSession = Depends(session)) -> dict[str, int]:
+    """Mirror every page in a Notion database as schedulable intents."""
+    credential = await _require_pasted_credential(body, "Notion database_id:integration_token")
+    try:
+        tasks = await fetch_notion_tasks(credential)
+    except NotionError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    count = await _sync_tasks(
+        db, NOTION_PREFIX, "Notion", [(t.id, t.title, Priority.P3, t.minutes) for t in tasks]
+    )
+    plan = await _replan(db)
+    return {"tasks": count, "blocks": len(plan.blocks)}
+
+
+@app.post("/api/sync/clickup")
+async def sync_clickup(body: TokenSyncIn, db: AsyncSession = Depends(session)) -> dict[str, int]:
+    """Mirror open ClickUp tasks assigned to the token owner as schedulable intents."""
+    credential = await _require_pasted_credential(body, "ClickUp team_id:api_token")
+    try:
+        tasks = await fetch_clickup_tasks(credential)
+    except ClickUpError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    count = await _sync_tasks(
+        db,
+        CLICKUP_PREFIX,
+        "ClickUp",
+        [(t.id, t.name, t.priority, t.minutes) for t in tasks],
+    )
+    plan = await _replan(db)
+    return {"tasks": count, "blocks": len(plan.blocks)}
+
+
+@app.post("/api/sync/jira")
+async def sync_jira(body: TokenSyncIn, db: AsyncSession = Depends(session)) -> dict[str, int]:
+    """Mirror unresolved Jira issues assigned to the token owner as schedulable intents."""
+    credential = await _require_pasted_credential(body, "Jira site:email:api_token")
+    try:
+        issues = await fetch_jira_issues(credential)
+    except JiraError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    count = await _sync_tasks(
+        db,
+        JIRA_PREFIX,
+        "Jira",
+        [(i.id, f"{i.key} {i.summary}".strip(), i.priority, i.minutes) for i in issues],
     )
     plan = await _replan(db)
     return {"issues": count, "blocks": len(plan.blocks)}

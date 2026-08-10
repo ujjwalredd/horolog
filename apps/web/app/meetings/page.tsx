@@ -13,7 +13,7 @@ import {
   type Intent,
   type Priority,
 } from "@/app/lib/api";
-import { Plus, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, AlertTriangle, Video } from "lucide-react";
 
 interface BusyRow {
   start: string;
@@ -260,6 +260,17 @@ export default function Meetings() {
                       {formatDuration(meeting.minutes_per_period)} ·{" "}
                       {ranges > 0 ? `${ranges} attendee range${ranges === 1 ? "" : "s"} avoided` : "no attendee ranges"}
                     </div>
+                    {meeting.zoom_join_url && (
+                      <a
+                        href={meeting.zoom_join_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-1.5 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-accent hover:underline"
+                      >
+                        <Video size={13} />
+                        Join Zoom
+                      </a>
+                    )}
                   </div>
                   <button
                     type="button"

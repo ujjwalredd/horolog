@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import os
 import tempfile
 import time
@@ -23,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from horolog import oauth
 from horolog.api import app
 from horolog.db import OAuthTokenRow, init_db, session
-from horolog.integrations import github, todoist
+from horolog.integrations import clickup, github, jira, notion, todoist
 from horolog.integrations.google_calendar import GoogleCalendarProvider
 from horolog.integrations.outlook_calendar import OutlookCalendarProvider
 from horolog.settings import settings
@@ -378,6 +379,186 @@ async def test_todoist_falls_back_to_a_stored_oauth_connection(
     synced = await client.post("/api/sync/todoist", json={"token": ""})
     assert synced.status_code == 200
     assert seen["auth"] == "Bearer from-oauth"
+
+
+# -------------------------------------------------------------------- notion
+
+
+@pytest.mark.asyncio
+async def test_notion_rejects_a_malformed_credential() -> None:
+    with pytest.raises(notion.NotionError):
+        await notion.fetch_notion_tasks("no-colon-here")
+
+
+@pytest.mark.asyncio
+async def test_notion_untitled_pages_are_dropped(mock_http: Callable[..., None]) -> None:
+    body = {
+        "results": [
+            {
+                "id": "1",
+                "properties": {
+                    "Name": {"type": "title", "title": [{"plain_text": "Write the doc"}]}
+                },
+            },
+            {"id": "2", "properties": {"Name": {"type": "title", "title": []}}},
+        ]
+    }
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=body)
+
+    mock_http(handler)
+    tasks = await notion.fetch_notion_tasks("db123:secret")
+    assert [t.title for t in tasks] == ["Write the doc"]
+
+
+@pytest.mark.asyncio
+async def test_notion_sync_creates_placeable_intents(
+    client: AsyncClient, mock_http: Callable[..., None]
+) -> None:
+    body = {
+        "results": [
+            {
+                "id": "1",
+                "properties": {
+                    "Name": {"type": "title", "title": [{"plain_text": "Ship the feature"}]}
+                },
+            }
+        ]
+    }
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=body)
+
+    mock_http(handler)
+    synced = await client.post("/api/sync/notion", json={"token": "db123:secret"})
+    assert synced.status_code == 200
+    assert synced.json()["tasks"] == 1
+    plan = (await client.get("/api/plan")).json()
+    assert [b for b in plan["blocks"] if "Ship the feature" in b["title"]]
+
+
+@pytest.mark.asyncio
+async def test_notion_sync_without_a_credential_is_refused(client: AsyncClient) -> None:
+    """No OAuth app exists for Notion — an empty body must be a clear 422,
+    never a 409 implying a "Connect" button that isn't rendered."""
+    response = await client.post("/api/sync/notion", json={"token": ""})
+    assert response.status_code == 422
+
+
+# ------------------------------------------------------------------- clickup
+
+
+@pytest.mark.asyncio
+async def test_clickup_rejects_a_malformed_credential() -> None:
+    with pytest.raises(clickup.ClickUpError):
+        await clickup.fetch_clickup_tasks("no-colon-here")
+
+
+@pytest.mark.asyncio
+async def test_clickup_only_the_token_owners_tasks_are_requested(
+    mock_http: Callable[..., None],
+) -> None:
+    """A team's /task endpoint returns everyone's tasks unless explicitly
+    filtered to the token owner — this pins that the owner is resolved via
+    /user first and threaded into the assignees[] filter, not skipped."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/user"):
+            return httpx.Response(200, json={"user": {"id": 42}})
+        assert request.url.params["assignees[]"] == "42"
+        return httpx.Response(
+            200, json={"tasks": [{"id": "1", "name": "Fix the bug", "priority": {"id": "2"}}]}
+        )
+
+    mock_http(handler)
+    tasks = await clickup.fetch_clickup_tasks("team1:tok")
+    assert [t.name for t in tasks] == ["Fix the bug"]
+    assert tasks[0].priority.name == "P2"
+
+
+@pytest.mark.asyncio
+async def test_clickup_sync_creates_placeable_intents(
+    client: AsyncClient, mock_http: Callable[..., None]
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/user"):
+            return httpx.Response(200, json={"user": {"id": 42}})
+        return httpx.Response(200, json={"tasks": [{"id": "1", "name": "Fix the bug"}]})
+
+    mock_http(handler)
+    synced = await client.post("/api/sync/clickup", json={"token": "team1:tok"})
+    assert synced.status_code == 200
+    assert synced.json()["tasks"] == 1
+    plan = (await client.get("/api/plan")).json()
+    assert [b for b in plan["blocks"] if "Fix the bug" in b["title"]]
+
+
+@pytest.mark.asyncio
+async def test_clickup_sync_without_a_credential_is_refused(client: AsyncClient) -> None:
+    response = await client.post("/api/sync/clickup", json={"token": ""})
+    assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------- jira
+
+
+@pytest.mark.asyncio
+async def test_jira_rejects_a_malformed_credential() -> None:
+    with pytest.raises(jira.JiraError):
+        await jira.fetch_jira_issues("only:two-parts")
+
+
+@pytest.mark.asyncio
+async def test_jira_uses_basic_auth_built_from_the_pasted_credential(
+    mock_http: Callable[..., None],
+) -> None:
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["auth"] = request.headers["authorization"]
+        return httpx.Response(
+            200,
+            json={
+                "issues": [
+                    {
+                        "id": "10001",
+                        "key": "ENG-1",
+                        "fields": {"summary": "Fix the login bug", "priority": {"name": "High"}},
+                    }
+                ]
+            },
+        )
+
+    mock_http(handler)
+    issues = await jira.fetch_jira_issues("mysite:me@example.com:tok")
+    expected = base64.b64encode(b"me@example.com:tok").decode()
+    assert seen["auth"] == f"Basic {expected}"
+    assert [i.summary for i in issues] == ["Fix the login bug"]
+    assert issues[0].priority.name == "P2"
+
+
+@pytest.mark.asyncio
+async def test_jira_sync_creates_placeable_intents(
+    client: AsyncClient, mock_http: Callable[..., None]
+) -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"issues": [{"id": "1", "key": "ENG-1", "fields": {"summary": "Fix it"}}]}
+        )
+
+    mock_http(handler)
+    synced = await client.post("/api/sync/jira", json={"token": "site:me@example.com:tok"})
+    assert synced.status_code == 200
+    assert synced.json()["issues"] == 1
+    plan = (await client.get("/api/plan")).json()
+    assert [b for b in plan["blocks"] if "Fix it" in b["title"]]
+
+
+@pytest.mark.asyncio
+async def test_jira_sync_without_a_credential_is_refused(client: AsyncClient) -> None:
+    response = await client.post("/api/sync/jira", json={"token": ""})
+    assert response.status_code == 422
 
 
 # --------------------------------------------------------------- calendars

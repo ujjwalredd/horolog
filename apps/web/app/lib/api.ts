@@ -60,6 +60,9 @@ export interface Intent {
   /** Slot ranges (not clock times) other attendees are busy - present only
    *  on meeting-kind intents. Its length is the useful part for display. */
   blocked_slots?: [number, number][];
+  /** Set automatically when HOROLOG_ZOOM_* is configured server-side - a
+   *  no-fixed-time meeting link, present only on meeting-kind intents. */
+  zoom_join_url?: string | null;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -145,9 +148,20 @@ export const analytics = {
   get: () => request<Analytics>("/api/analytics"),
 };
 
-/** Every OAuth-connectable provider. Google/Outlook are calendars — they
- *  land in the busy mirror; the other three are trackers — they land as tasks. */
-export type Provider = "google" | "outlook" | "linear" | "todoist" | "github";
+/** Every syncable provider. Google/Outlook are calendars — they land in the
+ *  busy mirror; the rest are trackers — they land as tasks. Linear/Todoist/
+ *  GitHub are OAuth-connectable (appear in `connections.list()`); Notion/
+ *  ClickUp/Jira are pasted-credential only — see their integrations/*.py
+ *  docstrings for why — and never appear in that list. */
+export type Provider =
+  | "google"
+  | "outlook"
+  | "linear"
+  | "todoist"
+  | "github"
+  | "notion"
+  | "clickup"
+  | "jira";
 
 export const sync = {
   ics: (url: string) =>
@@ -176,6 +190,22 @@ export const sync = {
     request<{ issues: number; blocks: number }>("/api/sync/github", {
       method: "POST",
       body: JSON.stringify({ token }),
+    }),
+  // These three have no OAuth fallback — a credential is required, not optional.
+  notion: (credential: string) =>
+    request<{ tasks: number; blocks: number }>("/api/sync/notion", {
+      method: "POST",
+      body: JSON.stringify({ token: credential }),
+    }),
+  clickup: (credential: string) =>
+    request<{ tasks: number; blocks: number }>("/api/sync/clickup", {
+      method: "POST",
+      body: JSON.stringify({ token: credential }),
+    }),
+  jira: (credential: string) =>
+    request<{ issues: number; blocks: number }>("/api/sync/jira", {
+      method: "POST",
+      body: JSON.stringify({ token: credential }),
     }),
   google: () => request<{ events: number; blocks: number }>("/api/sync/google", { method: "POST" }),
   outlook: () =>

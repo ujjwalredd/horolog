@@ -102,6 +102,15 @@ class Intent(BaseModel):
     focus time. Merging the two would quietly blank out your calendar with
     other people's schedules."""
 
+    zoom_meeting_id: str | None = None
+    zoom_join_url: str | None = None
+    """Set automatically for a Smart Meeting when HOROLOG_ZOOM_* is
+    configured (see integrations/zoom.py). Server-set only — never accepted
+    from `IntentIn`, so a client cannot fabricate a fake link. Created as a
+    "no fixed time" meeting, so `zoom_join_url` stays correct regardless of
+    which slot the solver places it in, or how a later re-solve moves it —
+    nothing here has to stay in sync with the placement engine."""
+
     @model_validator(mode="after")
     def _coherent(self) -> Intent:
         if self.max_chunk_minutes < self.min_chunk_minutes:
