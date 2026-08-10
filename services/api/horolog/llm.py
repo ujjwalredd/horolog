@@ -29,7 +29,14 @@ from horolog.settings import settings
 
 
 class ExtractionFailed(RuntimeError):
-    """The model could not produce a valid object, even after a repair round."""
+    """The model answered, but never produced something that validates."""
+
+
+class ProviderError(RuntimeError):
+    """The backend itself is the problem — unreachable, misconfigured, or
+    answering in a shape this code doesn't understand. Distinct from
+    ExtractionFailed: that means the model answered and got it wrong: this
+    means there's no model answer to judge in the first place."""
 
 
 def strict_schema(model: type[BaseModel]) -> dict[str, Any]:
@@ -107,9 +114,24 @@ class OpenAICompatible:
         # header validation rejects outright before the request is even sent.
         headers = {"Authorization": f"Bearer {self._key}"} if self._key else {}
         async with httpx.AsyncClient(timeout=self._timeout) as http:
-            response = await http.post(self._url, json=body, headers=headers)
-            response.raise_for_status()
-            return str(response.json()["choices"][0]["message"]["content"])
+            try:
+                response = await http.post(self._url, json=body, headers=headers)
+            except httpx.HTTPError as exc:
+                raise ProviderError(f"could not reach {self._url}: {exc}") from exc
+            if response.is_error:
+                # Not raise_for_status(): its message is just "404 Not Found
+                # for url ...", which discards the one thing worth showing —
+                # e.g. Ollama's body on a 404 literally says
+                # "model 'x' not found, try pulling it first".
+                raise ProviderError(
+                    f"language model returned {response.status_code}: {response.text[:300]}"
+                )
+            try:
+                return str(response.json()["choices"][0]["message"]["content"])
+            except (json.JSONDecodeError, KeyError, IndexError) as exc:
+                raise ProviderError(
+                    f"language model returned an unexpected response shape: {exc}"
+                ) from exc
 
 
 class AnthropicProvider:
@@ -180,5 +202,12 @@ async def extract[Model: BaseModel](
             raise ExtractionFailed(
                 f"model could not produce a valid {name} after a repair round: {second}"
             ) from second
+        except json.JSONDecodeError as exc:
+            # A sibling of the block above, not covered by the `except
+            # json.JSONDecodeError` below — that one only wraps the *first*
+            # attempt at line 170-ish, not this repair-round retry.
+            raise ExtractionFailed(
+                f"provider returned non-JSON for {name} after a repair round: {raw[:200]!r}"
+            ) from exc
     except json.JSONDecodeError as exc:
         raise ExtractionFailed(f"provider returned non-JSON for {name}: {raw[:200]!r}") from exc

@@ -635,6 +635,7 @@ export function EventManager({
                 {color.name}
                 <button
                   onClick={() => setSelectedColors((prev) => prev.filter((c) => c !== colorValue))}
+                  aria-label={`Remove ${color.name} filter`}
                   className="ml-1 hover:text-foreground"
                 >
                   <X className="h-3 w-3" />
@@ -647,6 +648,7 @@ export function EventManager({
               {tag}
               <button
                 onClick={() => setSelectedTags((prev) => prev.filter((t) => t !== tag))}
+                aria-label={`Remove ${tag} filter`}
                 className="ml-1 hover:text-foreground"
               >
                 <X className="h-3 w-3" />
@@ -658,6 +660,7 @@ export function EventManager({
               {category}
               <button
                 onClick={() => setSelectedCategories((prev) => prev.filter((c) => c !== category))}
+                aria-label={`Remove ${category} filter`}
                 className="ml-1 hover:text-foreground"
               >
                 <X className="h-3 w-3" />

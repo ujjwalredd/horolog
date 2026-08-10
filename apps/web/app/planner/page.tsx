@@ -189,7 +189,8 @@ export default function Planner() {
               <span>{error}</span>
             </div>
             <p className="mt-1 text-[12.5px] text-fg-muted">
-              Ensure the backend API is running on port 8000.
+              Ensure the backend API is running — check the terminal `npm run dev` is in for
+              which port it picked.
             </p>
           </div>
         )}

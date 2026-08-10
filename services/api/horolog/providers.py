@@ -181,11 +181,14 @@ class CalDAVProvider:
     event across the wire.
     """
 
-    def __init__(self, url: str, username: str, password: str, zone: ZoneInfo) -> None:
+    def __init__(
+        self, url: str, username: str, password: str, zone: ZoneInfo, timeout: float = 30.0
+    ) -> None:
         self._url = url
         self._username = username
         self._password = password
         self._zone = zone
+        self._timeout = timeout
 
     async def fetch(self, origin: datetime, horizon_days: int) -> list[BusyInterval]:
         import asyncio
@@ -204,7 +207,10 @@ class CalDAVProvider:
         out: list[BusyInterval] = []
         try:
             client = caldav.DAVClient(
-                url=self._url, username=self._username, password=self._password
+                url=self._url,
+                username=self._username,
+                password=self._password,
+                timeout=self._timeout,
             )
             for calendar in client.principal().calendars():
                 for index, event in enumerate(

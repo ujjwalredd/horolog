@@ -22,30 +22,30 @@ cp services/api/horolog.db backup-$(date +%F).db
 SQLite's own safe-copy command, so this works without stopping the
 container:
 ```bash
-docker compose -f infra/docker-compose.yml exec api \
+docker compose exec api \
   sqlite3 /app/data/horolog.db ".backup /app/data/backup.db"
-docker compose -f infra/docker-compose.yml cp api:/app/data/backup.db ./backup.db
+docker compose cp api:/app/data/backup.db ./backup.db
 ```
 
 **Restore** — stop the stack, replace the file, start it again:
 ```bash
-docker compose -f infra/docker-compose.yml down
-docker compose -f infra/docker-compose.yml cp ./backup.db api:/app/data/horolog.db
-docker compose -f infra/docker-compose.yml up -d
+docker compose down
+docker compose cp ./backup.db api:/app/data/horolog.db
+docker compose up -d
 ```
 
 ## Postgres
 
-Matches the user/database names in `infra/docker-compose.yml`.
+Matches the user/database names in `docker-compose.yml`.
 
 **Backup:**
 ```bash
-docker compose -f infra/docker-compose.yml exec db \
+docker compose exec db \
   pg_dump -U horolog horolog > backup.sql
 ```
 
 **Restore** (into a fresh, running `db` service):
 ```bash
-docker compose -f infra/docker-compose.yml exec -T db \
+docker compose exec -T db \
   psql -U horolog horolog < backup.sql
 ```

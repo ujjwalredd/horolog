@@ -84,10 +84,19 @@ export default function Inbox() {
           <div>
             <h1 className="text-[28px] font-bold text-fg">Task Inbox</h1>
             <p className="mt-1 text-[13.5px] text-fg-muted">
-              {rows.length} {rows.length === 1 ? "intent" : "intents"} ·{" "}
-              {formatDuration(rows.reduce((s, r) => s + r.scheduled, 0))} scheduled
-              {plan && !plan.complete && (
-                <span className="font-semibold text-danger"> · {plan.unmet.length} did not fit</span>
+              {plan ? (
+                <>
+                  {rows.length} {rows.length === 1 ? "intent" : "intents"} ·{" "}
+                  {formatDuration(rows.reduce((s, r) => s + r.scheduled, 0))} scheduled
+                  {!plan.complete && (
+                    <span className="font-semibold text-danger">
+                      {" "}
+                      · {plan.unmet.length} did not fit
+                    </span>
+                  )}
+                </>
+              ) : (
+                "Reading the plan..."
               )}
             </p>
           </div>
@@ -99,7 +108,7 @@ export default function Inbox() {
           </div>
         )}
 
-        {rows.length === 0 && !error && (
+        {plan && rows.length === 0 && !error && (
           <div className="rounded-card border border-black/[0.06] bg-surface p-12 text-center shadow-sm">
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-secondary text-indigo-600">
               <Sparkles size={22} />

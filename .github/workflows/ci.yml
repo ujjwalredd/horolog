@@ -80,6 +80,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+
+      - name: Compose resolves .env from the repo root, and Postgres by default
+        # Regression check for a real bug: docker-compose.yml used to live in
+        # infra/, so `.env` (which the README tells every new user to create
+        # at the repo root) was silently ignored — every OAuth credential,
+        # LLM setting, and timezone override a user set had no effect. This
+        # would not have failed a plain `docker compose config` either; it
+        # has to assert on the *resolved* values, from a repo-root .env, or
+        # it proves nothing.
+        run: |
+          cp .env.example .env
+          echo "HOROLOG_LLM_MODEL=ci-canary-value" >> .env
+          resolved=$(docker compose config)
+          echo "$resolved" | grep -q "HOROLOG_LLM_MODEL: ci-canary-value" || {
+            echo "::error::.env override was not applied — is docker-compose.yml still resolving .env from the right directory?"
+            exit 1
+          }
+          echo "$resolved" | grep -q "HOROLOG_DATABASE_URL: postgresql" || {
+            echo "::error::HOROLOG_DATABASE_URL did not default to Postgres — check it's still \${HOROLOG_DATABASE_URL:-...} and not hardcoded"
+            exit 1
+          }
+          rm .env
+
       # Build only — proves the Dockerfiles work on every PR without needing
       # a registry credential.
       - uses: docker/build-push-action@v6

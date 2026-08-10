@@ -305,10 +305,14 @@ export default function Habits() {
         </form>
 
         <h2 className="mb-3.5 text-[12px] font-semibold tracking-wider uppercase text-fg-muted">
-          Active Routines ({habits.length})
+          Active Routines {plan ? `(${habits.length})` : ""}
         </h2>
 
-        {habits.length === 0 ? (
+        {!plan ? (
+          <div className="rounded-card border border-black/[0.06] bg-surface p-10 text-center shadow-sm">
+            <p className="text-[13.5px] text-fg-muted">Reading the plan...</p>
+          </div>
+        ) : habits.length === 0 ? (
           <div className="rounded-card border border-black/[0.06] bg-surface p-10 text-center shadow-sm">
             <p className="text-[14px] font-semibold text-fg">No active routines</p>
             <p className="mt-1 text-[13px] text-fg-muted">Configure a habit above or use ⌘K to describe it.</p>

@@ -76,12 +76,12 @@ export default function TimePage() {
           <StatusCard
             label="Right now"
             block={current}
-            empty="Nothing scheduled — this time is open."
+            empty={plan ? "Nothing scheduled — this time is open." : "Reading the plan..."}
           />
           <StatusCard
             label="Up next"
             block={next}
-            empty="Nothing else scheduled for today."
+            empty={plan ? "Nothing else scheduled for today." : "Reading the plan..."}
             untilNow={now}
           />
         </div>

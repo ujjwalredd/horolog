@@ -1,15 +1,23 @@
 # Horolog — full self-hosted stack.
 #
-#   docker compose -f infra/docker-compose.yml up
+#   docker compose up
 #   → http://localhost:3000
+#
+# Lives at the repo root, not in infra/, so Compose finds your `.env` file
+# automatically — Compose resolves `.env` relative to the compose file's own
+# directory, not your shell's cwd, and a copy sitting one level down would be
+# silently ignored no matter what flags you pass to `docker compose`.
 #
 # Four services and no more. Everything the scheduler needs is a table in
 # Postgres; there is no queue, no vector store and no separate worker, because
 # a re-plan takes single-digit milliseconds and runs inline with the request
 # that caused it.
 #
-# To run without Postgres, delete the `db` service and set
+# To run without Postgres: delete the `db` service, delete `db:` from `api`'s
+# `depends_on` below, and set in your `.env`:
 #   HOROLOG_DATABASE_URL=sqlite+aiosqlite:///./data/horolog.db
+# (the `api` service's HOROLOG_DATABASE_URL line already reads from the
+# environment first, so nothing else needs editing)
 
 name: horolog
 
@@ -63,12 +71,16 @@ services:
 
   api:
     build:
-      context: ..
+      context: .
       dockerfile: infra/Dockerfile.api
     depends_on:
       db: { condition: service_healthy }
+      ollama-pull: { condition: service_completed_successfully }
     environment:
-      HOROLOG_DATABASE_URL: postgresql+asyncpg://horolog:${POSTGRES_PASSWORD:-horolog}@db:5432/horolog
+      # Overridable so the SQLite fallback above (delete `db`, set this in
+      # .env) actually works — it used to be hardcoded here, which made that
+      # instruction a no-op.
+      HOROLOG_DATABASE_URL: ${HOROLOG_DATABASE_URL:-postgresql+asyncpg://horolog:${POSTGRES_PASSWORD:-horolog}@db:5432/horolog}
       HOROLOG_LLM_PROVIDER: ${HOROLOG_LLM_PROVIDER:-openai}
       HOROLOG_LLM_BASE_URL: ${HOROLOG_LLM_BASE_URL:-http://ollama:11434/v1}
       HOROLOG_LLM_MODEL: ${HOROLOG_LLM_MODEL:-qwen3:8b}
@@ -99,7 +111,7 @@ services:
 
   web:
     build:
-      context: ..
+      context: .
       dockerfile: infra/Dockerfile.web
       args:
         # A build arg, not a runtime `environment:` — Next.js evaluates

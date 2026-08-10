@@ -1,5 +1,29 @@
 import type { Metadata } from "next";
+import { Bodoni_Moda, JetBrains_Mono, Jost } from "next/font/google";
 import "./globals.css";
+
+// Vendored at build time (next/font), not fetched from Google's CDN at
+// runtime — "no telemetry, nothing leaves the machine" (login/page.tsx)
+// should also be true of the UI's own asset loading. Weights match what the
+// old <link>/@import tags requested, so nothing renders differently.
+const jost = Jost({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-jost",
+  display: "swap",
+});
+const bodoniModa = Bodoni_Moda({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-bodoni-moda",
+  display: "swap",
+});
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: {
@@ -28,17 +52,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        {/* Self-host these for an air-gapped deploy; the CSS falls back to the
-            system stack, so a blocked CDN degrades rather than breaks. */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600&family=JetBrains+Mono:wght@400;500&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${jost.variable} ${bodoniModa.variable} ${jetbrainsMono.variable}`}
+    >
       <body>
         <a
           href="#planner"

@@ -1,5 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@400;500;600;700&family=Jost:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
+/* Bodoni Moda, Jost, and JetBrains Mono are vendored via next/font in
+   layout.tsx (build-time, zero runtime requests) and exposed here as the
+   --font-bodoni-moda / --font-jost / --font-jetbrains-mono variables below —
+   this file no longer fetches anything from Google's CDN. */
 
 /* ---------------------------------------------------------------------------
    Horolog Ultra-Luxury Design Tokens - Liquid Glass / High-end Minimalist
@@ -48,9 +51,9 @@
   --color-ok: #10b981;           /* Emerald 500 */
 
   /* Typography */
-  --font-serif: "Bodoni Moda", ui-serif, Georgia, serif;
-  --font-sans: "Jost", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+  --font-serif: var(--font-bodoni-moda), ui-serif, Georgia, serif;
+  --font-sans: var(--font-jost), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", monospace;
 
   /* Shadows (Fluid & Ambient) */
   --shadow-sm: 0 1px 2px rgba(12, 10, 9, 0.04), 0 2px 4px rgba(12, 10, 9, 0.02);

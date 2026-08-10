@@ -43,6 +43,7 @@ export function Shell({
   const pathname = usePathname();
   const [commandOpen, setCommandOpen] = useState(false);
   const [pulse, setPulse] = useState(false);
+  const [live, setLive] = useState(true);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -62,6 +63,12 @@ export function Shell({
       setTimeout(() => setPulse(false), 1200);
       onPlanChange?.();
     });
+    // The browser retries a dropped SSE connection on its own, so this isn't
+    // a fatal error — but the "Engine steady" dot was previously static and
+    // green regardless of whether the stream was actually alive, which is
+    // misleading during a backend restart or outage.
+    stream.onerror = () => setLive(false);
+    stream.onopen = () => setLive(true);
     return () => stream.close();
   }, [onPlanChange]);
 
@@ -133,19 +140,21 @@ export function Shell({
         <div className="mt-auto flex items-center justify-between rounded-xl border border-border bg-secondary/30 px-3 py-2.5">
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
-              <span
-                className={`absolute inline-flex h-full w-full rounded-full opacity-75 transition-colors duration-300 ${
-                  pulse ? "animate-ping bg-foreground" : "bg-green-500"
-                }`}
-              />
+              {live && (
+                <span
+                  className={`absolute inline-flex h-full w-full rounded-full opacity-75 transition-colors duration-300 ${
+                    pulse ? "animate-ping bg-foreground" : "bg-green-500"
+                  }`}
+                />
+              )}
               <span
                 className={`relative inline-flex h-2 w-2 rounded-full transition-colors duration-300 ${
-                  pulse ? "bg-foreground" : "bg-green-500"
+                  !live ? "bg-red-400" : pulse ? "bg-foreground" : "bg-green-500"
                 }`}
               />
             </span>
             <span className="text-[11.5px] font-medium text-muted-foreground">
-              {pulse ? "Optimizing..." : "Engine steady"}
+              {!live ? "Reconnecting..." : pulse ? "Optimizing..." : "Engine steady"}
             </span>
           </div>
           <Activity size={13} className={pulse ? "animate-spin text-foreground" : "text-muted-foreground"} />

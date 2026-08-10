@@ -54,7 +54,13 @@ from horolog.integrations.google_calendar import GoogleCalendarProvider
 from horolog.integrations.linear import LinearError, fetch_linear_issues
 from horolog.integrations.outlook_calendar import OutlookCalendarProvider
 from horolog.integrations.todoist import TodoistError, fetch_todoist_tasks
-from horolog.llm import AnthropicProvider, ExtractionFailed, OpenAICompatible, Provider
+from horolog.llm import (
+    AnthropicProvider,
+    ExtractionFailed,
+    OpenAICompatible,
+    Provider,
+    ProviderError,
+)
 from horolog.providers import (
     BUFFER_SOURCE,
     CalDAVProvider,
@@ -327,26 +333,31 @@ async def capture_intent(body: CaptureIn, db: AsyncSession = Depends(session)) -
     placer, so the worst a bad extraction can do is create a wrong-looking
     intent the user can delete.
     """
-    custom_provider: Provider | None = None
-    if body.provider and body.provider != "default" and body.model:
-        timeout = settings().llm_timeout_s
-        if body.provider == "anthropic":
-            custom_provider = AnthropicProvider(body.model, body.api_key or "", timeout)
-        else:
-            base_url = (
-                "https://api.openai.com/v1"
-                if body.provider == "openai"
-                else settings().llm_base_url
-            )
-            custom_provider = OpenAICompatible(base_url, body.model, body.api_key or "", timeout)
-
     try:
+        custom_provider: Provider | None = None
+        if body.provider and body.provider != "default" and body.model:
+            timeout = settings().llm_timeout_s
+            if body.provider == "anthropic":
+                # Raises a friendly RuntimeError if the optional `anthropic`
+                # extra isn't installed — has to happen inside this try, or
+                # that message never reaches the response.
+                custom_provider = AnthropicProvider(body.model, body.api_key or "", timeout)
+            else:
+                base_url = (
+                    "https://api.openai.com/v1"
+                    if body.provider == "openai"
+                    else settings().llm_base_url
+                )
+                custom_provider = OpenAICompatible(
+                    base_url, body.model, body.api_key or "", timeout
+                )
+
         draft = await capture(body.text, provider=custom_provider)
     except ExtractionFailed as exc:
         # Explicitly not a 500: the request was fine, the model could not read
         # it. The UI falls back to the manual form on this status.
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except httpx.HTTPError as exc:
+    except (ProviderError, httpx.HTTPError, RuntimeError) as exc:
         raise HTTPException(status_code=503, detail=f"language model unreachable: {exc}") from exc
 
     payload = to_payload(draft, origin())

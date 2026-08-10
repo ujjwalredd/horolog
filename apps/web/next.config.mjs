@@ -18,6 +18,17 @@ const config = {
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${api}/api/:path*` }];
   },
+
+  eslint: {
+    // `next build` runs its own lint pass and now finds a real config
+    // (eslint.config.mjs, added so `npm run lint` doesn't hang on Next's
+    // interactive setup wizard instead of failing cleanly). That surfaced
+    // pre-existing lint errors across the app unrelated to this change;
+    // fixing all of them is a separate, unbounded task. `npm run lint`
+    // still runs and reports them — this only keeps the build from
+    // blocking on lint, matching its behavior before the config existed.
+    ignoreDuringBuilds: true,
+  },
 };
 
 export default config;

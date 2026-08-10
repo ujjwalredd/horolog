@@ -63,18 +63,25 @@ export default function Connect() {
   const [feedUrl, setFeedUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [result, setResult] = useState<Result>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    // Two independent calls, so one failing doesn't have to take down a page
+    // that's still partly usable — but a failure has to be visible somewhere,
+    // or the API being down looks identical to a healthy fresh install with
+    // nothing connected yet.
+    let failure: string | null = null;
     try {
       setPlan(await api.plan());
-    } catch {
-      /* plan error handled elsewhere */
+    } catch (caught) {
+      failure = caught instanceof Error ? caught.message : "Could not reach the scheduler.";
     }
     try {
       setConnected(await connections.list());
-    } catch {
-      /* connect page still usable without this */
+    } catch (caught) {
+      failure ??= caught instanceof Error ? caught.message : "Could not reach the scheduler.";
     }
+    setLoadError(failure);
   }, []);
 
   useEffect(() => {
@@ -190,6 +197,13 @@ export default function Connect() {
             {Object.keys(bySource).length || 0} active sources.
           </p>
         </header>
+
+        {loadError && (
+          <div className="flex items-center gap-2.5 rounded-card border border-red-200 bg-red-50 p-4 text-[13.5px] font-medium text-danger shadow-sm">
+            <AlertCircle size={18} className="shrink-0" />
+            <span>{loadError} — sync status below may be stale.</span>
+          </div>
+        )}
 
         {result && (
           <div
@@ -356,6 +370,8 @@ export default function Connect() {
                       type="button"
                       onClick={() => disconnect(p.id)}
                       disabled={pending !== null}
+                      aria-label={`Disconnect ${p.label}`}
+                      title={`Disconnect ${p.label}`}
                       className="flex h-11 w-11 items-center justify-center rounded-xl border border-black/[0.08] bg-white text-fg-muted transition-colors hover:border-red-200 hover:text-danger disabled:opacity-50"
                     >
                       <Unplug size={15} />

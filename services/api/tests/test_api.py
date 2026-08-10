@@ -8,6 +8,7 @@ import typing
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta
 
+import httpx
 import pytest
 import pytest_asyncio
 
@@ -223,3 +224,97 @@ async def test_smart_meeting_lands_in_shared_availability(client: AsyncClient) -
     assert datetime.fromisoformat(focus["start"]).hour < 15, (
         "an attendee's calendar must not block the user's own solo work"
     )
+
+
+def _mock_llm(
+    monkeypatch: pytest.MonkeyPatch, handler: typing.Callable[[httpx.Request], httpx.Response]
+) -> None:
+    """Route the app's own outbound `httpx.AsyncClient` calls to `handler`,
+    so a captured request never actually leaves the process."""
+    real = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx, "AsyncClient", lambda **kw: real(**kw, transport=httpx.MockTransport(handler))
+    )
+
+
+@pytest.mark.asyncio
+async def test_capture_when_the_model_is_unreachable_returns_503_not_500(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A connection failure to the LLM backend (wrong HOROLOG_LLM_BASE_URL,
+    the model server not running yet) is the operator's problem, not a crash —
+    the endpoint must say so with a 503, never a bare 500."""
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    _mock_llm(monkeypatch, handler)
+    response = await client.post("/api/capture", json={"text": "gym 3x a week"})
+    assert response.status_code == 503
+    assert "could not reach" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_capture_when_the_model_returns_404_surfaces_the_body(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ollama's 404 body says 'model not found, try pulling it first' — that
+    text is the one actionable thing here and must survive into the
+    response, not get discarded by a generic status-code message."""
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, text="model 'qwen3:8b' not found, try pulling it first")
+
+    _mock_llm(monkeypatch, handler)
+    response = await client.post("/api/capture", json={"text": "gym 3x a week"})
+    assert response.status_code == 503
+    assert "not found, try pulling it first" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_capture_when_the_model_returns_an_unexpected_shape_returns_503_not_500(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 200 with no `choices` key — e.g. a reverse proxy's own error page,
+    or a server that isn't actually OpenAI-chat-compatible — must not crash
+    the endpoint with an unhandled KeyError."""
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"error": "not the shape you expected"})
+
+    _mock_llm(monkeypatch, handler)
+    response = await client.post("/api/capture", json={"text": "gym 3x a week"})
+    assert response.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_capture_with_anthropic_selected_but_sdk_missing_returns_503_not_500(
+    client: AsyncClient,
+) -> None:
+    """`anthropic` is an optional extra, not in the documented dev install
+    (`.[dev]`) — only the Docker image has it. Picking "Anthropic" in the UI
+    without it installed must surface the friendly install message, not a
+    bare 500. No mocking needed: the package genuinely isn't in this venv."""
+    response = await client.post(
+        "/api/capture",
+        json={"text": "gym 3x a week", "provider": "anthropic", "model": "claude-opus-5"},
+    )
+    assert response.status_code == 503
+    assert "horolog[anthropic]" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_sync_ics_when_the_feed_is_unreachable_returns_502_not_500(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A dead or mistyped .ics URL is the user's mistake to fix, not a server
+    crash — must map to 502 with the reason included."""
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("name or service not known")
+
+    _mock_llm(monkeypatch, handler)
+    response = await client.post(
+        "/api/sync/ics", json={"url": "https://example.invalid/calendar.ics"}
+    )
+    assert response.status_code == 502

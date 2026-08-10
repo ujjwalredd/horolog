@@ -22,7 +22,8 @@ priority preemption, automatic rescheduling - had not been built in the open.
 ```bash
 git clone https://github.com/ujjwalredd/horolog.git && cd horolog
 cp .env.example .env
-docker compose -f infra/docker-compose.yml up
+docker compose up
+# first boot pulls a small local model, a few minutes on a fresh machine
 # → http://localhost:3000
 ```
 
@@ -192,7 +193,7 @@ there is no CORS to configure. Override with `HOROLOG_API_URL`.
 ### Tests and checks
 
 ```bash
-npm test       # 45 tests, ~1s
+npm test       # 95 tests, ~1s
 npm run bench  # solve-time + quality benchmark
 npm run check  # ruff + ruff format + mypy strict + pytest, then tsc + next build
 ```
@@ -232,12 +233,15 @@ at UTC on a machine that isn't, a 9-to-5 goal silently lands at 5am.
 ## Deployment
 
 ```bash
-docker compose -f infra/docker-compose.yml up -d
+docker compose up -d
 ```
 
 Brings up the API, the web app, Postgres, and Ollama with a small model pulled
-on first boot. For SQLite instead of Postgres, drop the `db` service and set
-`HOROLOG_DATABASE_URL=sqlite+aiosqlite:///./data/horolog.db`.
+on first boot — the API waits for that pull to finish before it starts, so the
+first `up` takes a few minutes on a fresh machine; that's the model download,
+not a hang. For SQLite instead of Postgres: delete the `db` service, delete
+`db:` from `api`'s `depends_on`, and set
+`HOROLOG_DATABASE_URL=sqlite+aiosqlite:///./data/horolog.db` in `.env`.
 
 **Stick to one API worker.** SSE, OAuth's CSRF state, and the booking-link
 rate limiter all live in-process — a second `uvicorn` worker won't see the
@@ -260,16 +264,17 @@ pulling a new version.
 
 ```
 services/api/horolog/
-  domain/       Pydantic contracts - the single source of truth
-  solver/       expand → greedy placement → score
-  providers.py  ICS + CalDAV
-  llm.py        multi-provider structured extraction
-  capture.py    natural language → validated intent
-  analytics.py  derived metrics
-  api.py        HTTP surface + SSE
-apps/web/app/   Next.js 15, App Router, Tailwind v4
-docs/           ARCHITECTURE.md
-infra/          docker-compose + Dockerfiles
+  domain/         Pydantic contracts - the single source of truth
+  solver/         expand → greedy placement → score
+  providers.py    ICS + CalDAV
+  integrations/   calendar providers + tracker integrations
+  llm.py          multi-provider structured extraction
+  capture.py      natural language → validated intent
+  analytics.py    derived metrics
+  api.py          HTTP surface + SSE
+apps/web/app/     Next.js 15, App Router, Tailwind v4
+docs/             ARCHITECTURE.md
+docker-compose.yml, infra/Dockerfile.*   deployment
 ```
 
 ---
