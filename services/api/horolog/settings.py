@@ -79,6 +79,13 @@ class Settings(BaseSettings):
     the request that syncs them, so there is nothing for a background loop to
     hold onto for those two."""
 
+    calendar_writeback_enabled: bool = Field(default=False)
+    """Push scheduled blocks onto a dedicated "Horolog" calendar on connected
+    Google/Outlook accounts, so they show up as real events colleagues can
+    see and can't double-book. Off by default: writing to someone's calendar
+    without being asked is not a default anyone should ship. Also needs the
+    connection reconnected once — see CHANGELOG.md 0.2.0."""
+
     llm_provider: Literal["openai", "anthropic"] = "openai"
     """`openai` covers every OpenAI-compatible server — Ollama, vLLM, SGLang,
     llama.cpp, OpenAI itself. `anthropic` uses the official Claude SDK, which

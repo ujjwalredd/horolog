@@ -154,4 +154,12 @@ def expand(intent: Intent, horizon_slots: int) -> list[Requirement]:
 
 
 def expand_all(intents: list[Intent], horizon_slots: int) -> list[Requirement]:
-    return [r for intent in intents for r in expand(intent, horizon_slots)]
+    # A completed intent demands nothing further — skipped here, the one
+    # choke point every intent's demand already passes through, rather than
+    # in each of the (several) callers that build a requirement list.
+    return [
+        r
+        for intent in intents
+        if intent.completed_at is None
+        for r in expand(intent, horizon_slots)
+    ]

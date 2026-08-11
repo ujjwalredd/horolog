@@ -8,12 +8,13 @@ import {
   PRIORITY_TINT,
   api,
   formatDuration,
+  intentToEditPayload,
   minutesBetween,
   type Intent,
   type Plan,
   type Priority,
 } from "@/app/lib/api";
-import { Trash2, AlertCircle, Clock, CheckCircle, Sparkles } from "lucide-react";
+import { Trash2, AlertCircle, Clock, CheckCircle, Circle, Sparkles, Pencil } from "lucide-react";
 
 /** Ultra-Luxury Task Inbox View for Horolog.
  *  Displays all scheduling intents, their placed time progress bars, and unmet demand callouts.
@@ -23,6 +24,10 @@ export default function Inbox() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editMinutes, setEditMinutes] = useState(60);
+  const [editPriority, setEditPriority] = useState<Priority>(3);
 
   const load = useCallback(async () => {
     try {
@@ -72,6 +77,48 @@ export default function Inbox() {
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not remove that.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function toggleComplete(intent: Intent) {
+    setBusy(intent.id);
+    try {
+      if (intent.completed_at) {
+        await api.uncomplete(intent.id);
+      } else {
+        await api.complete(intent.id);
+      }
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not update that.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function startEdit(intent: Intent) {
+    setEditing(intent.id);
+    setEditTitle(intent.title);
+    setEditMinutes(intent.minutes_per_period);
+    setEditPriority(intent.priority);
+  }
+
+  async function saveEdit(intent: Intent) {
+    if (!plan) return;
+    setBusy(intent.id);
+    try {
+      await api.update(intent.id, {
+        ...intentToEditPayload(intent, plan.origin),
+        title: editTitle.trim() || intent.title,
+        minutes_per_period: editMinutes,
+        priority: editPriority,
+      });
+      setEditing(null);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not save that edit.");
     } finally {
       setBusy(null);
     }
@@ -134,68 +181,158 @@ export default function Inbox() {
                   aria-hidden
                 />
 
-                <div className="mt-1 shrink-0 text-accent">
-                  <Glyph kind={intent.kind} size={18} />
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="truncate text-[15px] font-semibold text-fg">{intent.title}</span>
-                    <span className="tabular text-[12px] font-medium text-fg-muted">
-                      {KIND_LABEL[intent.kind]} · {PRIORITY_NAME[intent.priority as Priority]}
-                      {intent.period_days ? ` · every ${intent.period_days}d` : ""}
-                    </span>
-                  </div>
-
-                  <div className="tabular mt-1.5 flex flex-wrap items-center gap-2 text-[12.5px] text-fg-muted">
-                    {next ? (
-                      <>
-                        <span className="inline-flex items-center gap-1 font-medium text-fg">
-                          <Clock size={13} className="text-accent" />
-                          {new Date(next.start).toLocaleString([], {
-                            weekday: "short",
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })}
-                        </span>
-                        <span>·</span>
-                        <span>{blocks.length} {blocks.length === 1 ? "block" : "blocks"}</span>
-                        <span>·</span>
-                        <span>{formatDuration(scheduled)} of {formatDuration(intent.minutes_per_period)}</span>
-                      </>
+                {intent.period_days == null ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleComplete(intent)}
+                    disabled={busy === intent.id}
+                    aria-label={intent.completed_at ? "Mark not done" : "Mark done"}
+                    className="mt-1 shrink-0 text-fg-subtle transition-colors hover:text-accent disabled:opacity-40"
+                  >
+                    {intent.completed_at ? (
+                      <CheckCircle size={18} className="text-accent" />
                     ) : (
-                      <span className="font-semibold text-danger">Not placed</span>
+                      <Circle size={18} />
+                    )}
+                  </button>
+                ) : (
+                  <div className="mt-1 shrink-0 text-accent">
+                    <Glyph kind={intent.kind} size={18} />
+                  </div>
+                )}
+
+                {editing === intent.id ? (
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        autoFocus
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        className="min-w-0 flex-1 rounded-lg border border-black/10 bg-background px-2.5 py-1.5 text-[14px] font-medium text-fg outline-none focus:border-accent"
+                      />
+                      <input
+                        type="number"
+                        min={15}
+                        step={15}
+                        value={editMinutes}
+                        onChange={(e) => setEditMinutes(Number(e.target.value))}
+                        aria-label="Minutes"
+                        className="tabular w-20 rounded-lg border border-black/10 bg-background px-2.5 py-1.5 text-[13px] text-fg outline-none focus:border-accent"
+                      />
+                      <select
+                        value={editPriority}
+                        onChange={(e) => setEditPriority(Number(e.target.value) as Priority)}
+                        aria-label="Priority"
+                        className="rounded-lg border border-black/10 bg-background px-2 py-1.5 text-[13px] text-fg outline-none focus:border-accent"
+                      >
+                        {([1, 2, 3, 4] as Priority[]).map((p) => (
+                          <option key={p} value={p}>
+                            {PRIORITY_NAME[p]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => saveEdit(intent)}
+                        disabled={busy === intent.id}
+                        className="rounded-lg bg-accent px-3 py-1 text-[12.5px] font-semibold text-on-accent disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditing(null)}
+                        className="rounded-lg px-3 py-1 text-[12.5px] font-medium text-fg-muted hover:bg-sunk"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span
+                        className={`truncate text-[15px] font-semibold ${intent.completed_at ? "text-fg-subtle line-through" : "text-fg"}`}
+                      >
+                        {intent.title}
+                      </span>
+                      <span className="tabular text-[12px] font-medium text-fg-muted">
+                        {KIND_LABEL[intent.kind]} · {PRIORITY_NAME[intent.priority as Priority]}
+                        {intent.period_days ? ` · every ${intent.period_days}d` : ""}
+                      </span>
+                    </div>
+
+                    <div className="tabular mt-1.5 flex flex-wrap items-center gap-2 text-[12.5px] text-fg-muted">
+                      {intent.completed_at ? (
+                        <span className="font-medium text-accent">Done</span>
+                      ) : next ? (
+                        <>
+                          <span className="inline-flex items-center gap-1 font-medium text-fg">
+                            <Clock size={13} className="text-accent" />
+                            {new Date(next.start).toLocaleString([], {
+                              weekday: "short",
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })}
+                          </span>
+                          <span>·</span>
+                          <span>{blocks.length} {blocks.length === 1 ? "block" : "blocks"}</span>
+                          <span>·</span>
+                          <span>{formatDuration(scheduled)} of {formatDuration(intent.minutes_per_period)}</span>
+                        </>
+                      ) : (
+                        <span className="font-semibold text-danger">Not placed</span>
+                      )}
+                    </div>
+
+                    {!intent.completed_at && (
+                      <>
+                        {/* Progress Bar */}
+                        <div className="mt-3 flex items-center gap-3">
+                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-sunk">
+                            <div
+                              className="h-full rounded-full bg-accent transition-[width] duration-300"
+                              style={{ width: `${percent}%` }}
+                            />
+                          </div>
+                          <span className="tabular text-[11px] font-medium text-fg-muted">{percent}%</span>
+                        </div>
+
+                        {short > 0 && (
+                          <div className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1 text-[12px] font-medium text-danger">
+                            <AlertCircle size={13} />
+                            {formatDuration(short)} could not be placed - widen its window or lower priority.
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
+                )}
 
-                  {/* Progress Bar */}
-                  <div className="mt-3 flex items-center gap-3">
-                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-sunk">
-                      <div
-                        className="h-full rounded-full bg-accent transition-[width] duration-300"
-                        style={{ width: `${percent}%` }}
-                      />
-                    </div>
-                    <span className="tabular text-[11px] font-medium text-fg-muted">{percent}%</span>
-                  </div>
+                {editing !== intent.id && intent.kind !== "meeting" && (
+                  <button
+                    type="button"
+                    onClick={() => startEdit(intent)}
+                    aria-label={`Edit ${intent.title}`}
+                    className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-fg-subtle opacity-0 transition-all duration-150 hover:bg-sunk hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                )}
 
-                  {short > 0 && (
-                    <div className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1 text-[12px] font-medium text-danger">
-                      <AlertCircle size={13} />
-                      {formatDuration(short)} could not be placed - widen its window or lower priority.
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => remove(intent.id)}
-                  disabled={busy === intent.id}
-                  aria-label={`Remove ${intent.title}`}
-                  className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-fg-subtle opacity-0 transition-all duration-150 hover:bg-red-50 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-40"
-                >
-                  <Trash2 size={15} />
-                </button>
+                {editing !== intent.id && (
+                  <button
+                    type="button"
+                    onClick={() => remove(intent.id)}
+                    disabled={busy === intent.id}
+                    aria-label={`Remove ${intent.title}`}
+                    className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-fg-subtle opacity-0 transition-all duration-150 hover:bg-red-50 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-40"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                )}
               </div>
             </li>
           ))}

@@ -90,6 +90,34 @@ class OAuthTokenRow(Base):
     )
 
 
+class SyncedBlockRow(Base):
+    """One scheduled block already mirrored onto an external calendar as a
+    real event — state for the write-back diff, not a cache.
+
+    `api.py`'s `_push_calendar` compares the current plan against these rows
+    on every push: a key present in both with the same slots needs no call at
+    all, a changed key needs one PATCH, a vanished key needs one DELETE. That
+    is the entire reason two-pass placement bounding churn to "only the
+    blocks actually hit" matters on the write side too — without this table
+    every push would be a full delete-and-recreate of every event.
+    """
+
+    __tablename__ = "synced_blocks"
+
+    provider: Mapped[str] = mapped_column(String(16), primary_key=True)
+    intent_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    occurrence: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chunk: Mapped[int] = mapped_column(Integer, primary_key=True)
+    calendar_id: Mapped[str] = mapped_column(String(256))
+    """Which calendar `event_id` lives on. Compared against the freshly
+    resolved calendar on every push (`api.py`'s `_push_calendar`) — if they
+    differ, the user deleted the Horolog calendar since the last push, every
+    `event_id` here is dead, and the rows are discarded rather than trusted."""
+    event_id: Mapped[str] = mapped_column(String(256))
+    start_slot: Mapped[int] = mapped_column(Integer)
+    end_slot: Mapped[int] = mapped_column(Integer)
+
+
 @lru_cache(maxsize=1)
 def _engine() -> AsyncEngine:
     return create_async_engine(settings().database_url, future=True)

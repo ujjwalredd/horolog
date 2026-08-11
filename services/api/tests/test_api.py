@@ -318,3 +318,207 @@ async def test_sync_ics_when_the_feed_is_unreachable_returns_502_not_500(
         "/api/sync/ics", json={"url": "https://example.invalid/calendar.ics"}
     )
     assert response.status_code == 502
+
+
+# --------------------------------------------------------------- task lifecycle
+
+
+@pytest.mark.asyncio
+async def test_completing_a_task_frees_its_capacity_on_the_next_solve(
+    client: AsyncClient,
+) -> None:
+    created = (
+        await client.post(
+            "/api/intents", json={"title": "Ship the thing", "minutes_per_period": 60}
+        )
+    ).json()
+
+    plan = (await client.get("/api/plan")).json()
+    assert any(b["intent_id"] == created["id"] for b in plan["blocks"])
+
+    done = await client.post(f"/api/intents/{created['id']}/complete")
+    assert done.status_code == 200
+    assert done.json()["completed_at"] is not None
+
+    plan = (await client.get("/api/plan")).json()
+    assert not any(b["intent_id"] == created["id"] for b in plan["blocks"]), (
+        "a completed task must not keep occupying a slot"
+    )
+
+    intents = (await client.get("/api/intents")).json()
+    mine = next(i for i in intents if i["id"] == created["id"])
+    assert mine["completed_at"] is not None, "the row is kept, not deleted"
+
+
+@pytest.mark.asyncio
+async def test_uncompleting_a_task_restores_it_to_the_plan(client: AsyncClient) -> None:
+    created = (
+        await client.post("/api/intents", json={"title": "Redo it", "minutes_per_period": 60})
+    ).json()
+    await client.post(f"/api/intents/{created['id']}/complete")
+
+    undone = await client.delete(f"/api/intents/{created['id']}/complete")
+    assert undone.status_code == 200
+    assert undone.json()["completed_at"] is None
+
+    plan = (await client.get("/api/plan")).json()
+    assert any(b["intent_id"] == created["id"] for b in plan["blocks"])
+
+
+@pytest.mark.asyncio
+async def test_completing_a_recurring_habit_is_rejected(client: AsyncClient) -> None:
+    """Completion is scoped to one-shot tasks — a habit needs per-occurrence
+    state that does not exist yet, so it must fail loudly, not silently no-op
+    or complete the whole recurring series."""
+    created = (
+        await client.post(
+            "/api/intents",
+            json={
+                "title": "Gym",
+                "kind": "habit",
+                "minutes_per_period": 180,
+                "period_days": 7,
+                "min_chunk_minutes": 60,
+                "max_chunk_minutes": 60,
+            },
+        )
+    ).json()
+    response = await client.post(f"/api/intents/{created['id']}/complete")
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_completing_an_unknown_intent_is_404(client: AsyncClient) -> None:
+    response = await client.post("/api/intents/does-not-exist/complete")
+    assert response.status_code == 404
+
+
+def _no_overlaps(blocks: list[dict[str, typing.Any]], intent_id: str) -> bool:
+    mine = sorted(
+        (datetime.fromisoformat(b["start"]), datetime.fromisoformat(b["end"]))
+        for b in blocks
+        if b["intent_id"] == intent_id
+    )
+    return all(mine[i][1] <= mine[i + 1][0] for i in range(len(mine) - 1))
+
+
+@pytest.mark.asyncio
+async def test_editing_an_intent_keeps_its_id_and_stays_stable_when_unchanged(
+    client: AsyncClient,
+) -> None:
+    created = (
+        await client.post(
+            "/api/intents", json={"title": "Original", "minutes_per_period": 60, "priority": 3}
+        )
+    ).json()
+    before = (await client.get("/api/plan")).json()
+    was = next(b for b in before["blocks"] if b["intent_id"] == created["id"])
+
+    edited = await client.put(
+        f"/api/intents/{created['id']}",
+        json={"title": "Original", "minutes_per_period": 60, "priority": 1},
+    )
+    assert edited.status_code == 200
+    assert edited.json()["id"] == created["id"]
+
+    after = (await client.get("/api/plan")).json()
+    now = next(b for b in after["blocks"] if b["intent_id"] == created["id"])
+    assert now["start"] == was["start"], "an edit that doesn't touch duration must not move it"
+    assert now["priority"] == 1
+
+
+@pytest.mark.asyncio
+async def test_editing_an_intent_larger_does_not_overlap_or_orphan(client: AsyncClient) -> None:
+    created = (
+        await client.post(
+            "/api/intents",
+            json={
+                "title": "Grows",
+                "minutes_per_period": 120,
+                "min_chunk_minutes": 30,
+                "max_chunk_minutes": 120,
+            },
+        )
+    ).json()
+
+    edited = await client.put(
+        f"/api/intents/{created['id']}",
+        json={
+            "title": "Grows",
+            "minutes_per_period": 180,
+            "min_chunk_minutes": 30,
+            "max_chunk_minutes": 120,
+        },
+    )
+    assert edited.status_code == 200
+
+    plan = (await client.get("/api/plan")).json()
+    assert _no_overlaps(plan["blocks"], created["id"])
+    placed = sum(
+        (datetime.fromisoformat(b["end"]) - datetime.fromisoformat(b["start"])).total_seconds()
+        for b in plan["blocks"]
+        if b["intent_id"] == created["id"]
+    )
+    assert placed == 180 * 60
+
+
+@pytest.mark.asyncio
+async def test_editing_an_intent_smaller_does_not_overlap_or_orphan(client: AsyncClient) -> None:
+    created = (
+        await client.post(
+            "/api/intents",
+            json={
+                "title": "Shrinks",
+                "minutes_per_period": 180,
+                "min_chunk_minutes": 30,
+                "max_chunk_minutes": 120,
+            },
+        )
+    ).json()
+
+    edited = await client.put(
+        f"/api/intents/{created['id']}",
+        json={
+            "title": "Shrinks",
+            "minutes_per_period": 60,
+            "min_chunk_minutes": 30,
+            "max_chunk_minutes": 120,
+        },
+    )
+    assert edited.status_code == 200
+
+    plan = (await client.get("/api/plan")).json()
+    assert _no_overlaps(plan["blocks"], created["id"])
+    placed = sum(
+        (datetime.fromisoformat(b["end"]) - datetime.fromisoformat(b["start"])).total_seconds()
+        for b in plan["blocks"]
+        if b["intent_id"] == created["id"]
+    )
+    assert placed == 60 * 60
+
+
+@pytest.mark.asyncio
+async def test_editing_an_unknown_intent_is_404(client: AsyncClient) -> None:
+    response = await client.put(
+        "/api/intents/does-not-exist", json={"title": "x", "minutes_per_period": 30}
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_editing_an_intent_rejects_the_same_invalid_shapes_as_creating_one(
+    client: AsyncClient,
+) -> None:
+    created = (
+        await client.post("/api/intents", json={"title": "Fine", "minutes_per_period": 60})
+    ).json()
+    response = await client.put(
+        f"/api/intents/{created['id']}",
+        json={
+            "title": "Fine",
+            "minutes_per_period": 60,
+            "min_chunk_minutes": 90,
+            "max_chunk_minutes": 30,
+        },
+    )
+    assert response.status_code == 422

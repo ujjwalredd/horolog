@@ -171,6 +171,51 @@ stable. It is state for the algorithm, not a record of history.
 **Multi-tenancy** is a `user_id` foreign key on all three plus a filter in
 `load_intents` / `load_previous_plan`. Nothing else in the schema changes.
 
+## Calendar write-back
+
+Read sync (`providers.py`, `integrations/google_calendar.py`'s `fetch`) and
+write-back (that same file's `GoogleCalendarWriter`, called from `api.py`'s
+`_push_calendar`) are asymmetric on purpose: write-back targets a secondary
+calendar it creates itself, named "Horolog", never the primary calendar
+`fetch` reads.
+
+That is a structural guarantee, not a convention someone could accidentally
+erode. `GoogleCalendarProvider.fetch` only ever requests
+`calendars/primary/events`; a secondary calendar is invisible to it by
+construction. Route write-back through the primary calendar instead — even
+behind a filter on some `extendedProperties` tag — and correctness now
+depends on that filter never having a bug, because the failure mode is a
+silent feedback loop: Horolog writes a block, reads it back as someone else's
+busy time, and schedules around its own output. A future contributor who
+"simplifies" this by writing straight to `calendars/primary` would reintroduce
+exactly that loop; `test_calendar_push_never_leaks_its_own_events_back_as_busy_time`
+in `test_oauth_and_sync.py` is what would catch it.
+
+Google's OAuth scope enforces the same boundary independently:
+`calendar.app.created` (added in `oauth.py`'s `_SCOPES` for 0.2.0) grants
+write access only to calendars the app itself created, so even a bug in
+`_push_calendar` cannot reach the primary calendar. Microsoft Graph has no
+equivalent scope, so Outlook write-back needs the broader
+`Calendars.ReadWrite` — the secondary-calendar boundary there is enforced
+entirely by `OutlookCalendarWriter` always operating through
+`/me/calendars/{id}/events` for the id it resolved, never `/me/events`.
+
+**`synced_blocks`** is the diff state for push, one row per block currently
+believed to exist on the far end:
+
+| column | type | notes |
+|---|---|---|
+| `provider`, `intent_id`, `occurrence`, `chunk` | composite PK | the same `ScheduledBlock.key` the frontend already uses for React keys |
+| `calendar_id` | `string` | which calendar `event_id` lives on — see below |
+| `event_id` | `string` | the provider's id for the pushed event |
+| `start_slot`, `end_slot` | `integer` | what was pushed, to detect a moved block without an extra round trip |
+
+Every push resolves the "Horolog" calendar fresh (`ensure_calendar`) rather
+than trusting a cached id, and compares it against `calendar_id` on the
+stored rows. A mismatch means the user deleted the calendar since the last
+push — every `event_id` on file is dead — so the rows are discarded and
+rebuilt from scratch rather than left to silently go stale.
+
 ## The LLM boundary
 
 The model is confined to one job: turning a sentence into a candidate `Intent`.

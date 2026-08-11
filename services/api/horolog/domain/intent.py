@@ -9,6 +9,7 @@ factory, never a new solver path.
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import IntEnum, StrEnum
 
 from pydantic import BaseModel, Field, model_validator
@@ -110,6 +111,17 @@ class Intent(BaseModel):
     "no fixed time" meeting, so `zoom_join_url` stays correct regardless of
     which slot the solver places it in, or how a later re-solve moves it —
     nothing here has to stay in sync with the placement engine."""
+
+    completed_at: datetime | None = None
+    """Set once, never cleared automatically. `solver/expand.py` skips a
+    completed intent entirely, so its capacity is freed on the very next
+    solve — the row itself is kept rather than deleted, so the inbox and
+    analytics can still show it was done. Scoped to one-shot tasks
+    (`period_days is None`) at the API layer (`api.py`'s complete/uncomplete
+    routes) — checking off one occurrence of a recurring habit needs
+    per-occurrence state, a real feature and not this one.
+    ponytail: upgrade path is per-occurrence completion for habits, when
+    someone actually asks for habit streaks."""
 
     @model_validator(mode="after")
     def _coherent(self) -> Intent:

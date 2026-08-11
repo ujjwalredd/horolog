@@ -49,12 +49,26 @@ _TOKEN_URLS = {
 # ~1 hour access token. Linear, Todoist and GitHub tokens issued through OAuth
 # do not expire under normal use, so there is nothing to refresh there.
 _SCOPES = {
-    "google": "https://www.googleapis.com/auth/calendar.readonly",
-    "outlook": "offline_access https://graph.microsoft.com/Calendars.Read",
+    # `calendar.app.created` grants write access only to calendars this
+    # application itself created — never the primary calendar — which is
+    # what makes push write-back (`api.py`'s `_push_calendar`) safe by
+    # construction rather than by convention. Requesting it here even though
+    # write-back defaults to off (`HOROLOG_CALENDAR_WRITEBACK`) means turning
+    # write-back on later never needs a second consent screen.
+    "google": "https://www.googleapis.com/auth/calendar.readonly "
+    "https://www.googleapis.com/auth/calendar.app.created",
+    # Graph has no equivalent "only what we created" scope, so write-back
+    # needs full `Calendars.ReadWrite` — documented plainly in the README
+    # rather than glossed over.
+    "outlook": "offline_access https://graph.microsoft.com/Calendars.ReadWrite",
     "linear": "read",
     "todoist": "data:read",
     "github": "repo",
 }
+"""Changing either calendar scope requires every existing Google/Outlook
+connection to be reconnected — a token issued under the old scope keeps
+working for read sync but is rejected by the write-back endpoints until then.
+See CHANGELOG.md 0.2.0."""
 
 REFRESHABLE = {"google", "outlook"}
 

@@ -34,6 +34,7 @@ from horolog.capture import capture, to_payload
 from horolog.db import (
     BusyRow,
     IntentRow,
+    SyncedBlockRow,
     init_db,
     load_intents,
     load_previous_plan,
@@ -52,11 +53,11 @@ from horolog.domain.time import (
 )
 from horolog.integrations.clickup import ClickUpError, fetch_clickup_tasks
 from horolog.integrations.github import GithubError, fetch_github_issues
-from horolog.integrations.google_calendar import GoogleCalendarProvider
+from horolog.integrations.google_calendar import GoogleCalendarProvider, GoogleCalendarWriter
 from horolog.integrations.jira import JiraError, fetch_jira_issues
 from horolog.integrations.linear import LinearError, fetch_linear_issues
 from horolog.integrations.notion import NotionError, fetch_notion_tasks
-from horolog.integrations.outlook_calendar import OutlookCalendarProvider
+from horolog.integrations.outlook_calendar import OutlookCalendarProvider, OutlookCalendarWriter
 from horolog.integrations.todoist import TodoistError, fetch_todoist_tasks
 from horolog.integrations.zoom import ZoomError, create_meeting, delete_meeting
 from horolog.llm import (
@@ -97,6 +98,14 @@ def origin() -> datetime:
 
 def horizon_slots() -> int:
     return settings().horizon_days * SLOTS_PER_DAY
+
+
+MAX_PUSH_OPS = 200
+"""Hard cap on create/patch/delete calls in one calendar push — same
+convention as `integrations/notion.py`'s `MAX_PAGES`. A first push against a
+large plan must not exhaust the provider's write quota in one call; whatever
+does not fit catches up on the next background tick or the next explicit
+push, since the diff against `synced_blocks` is what decides what is left."""
 
 
 def _clip(start: int, end: int) -> tuple[int, int] | None:
@@ -288,7 +297,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             await sync_task
 
 
-app = FastAPI(title="Horolog", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Horolog", version="0.2.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings().cors_origins,
@@ -408,6 +417,87 @@ async def delete_intent(intent_id: str, db: AsyncSession = Depends(session)) -> 
 
     await _replan(db)
     return Response(status_code=204)
+
+
+@app.post("/api/intents/{intent_id}/complete")
+async def complete_intent(intent_id: str, db: AsyncSession = Depends(session)) -> dict[str, Any]:
+    """Mark a one-shot task done.
+
+    The row is kept rather than deleted — so the inbox and analytics can
+    still show it was finished — but `solver/expand.py` skips a completed
+    intent entirely, so whatever capacity it still held is freed on the very
+    next solve, same as a delete would free it.
+    """
+    row = await db.get(IntentRow, intent_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"no intent {intent_id!r}")
+    intent = Intent.model_validate(row.payload)
+    if intent.period_days is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="only a one-shot task can be marked complete — a recurring "
+            "habit needs per-occurrence completion, not built yet",
+        )
+    intent = intent.model_copy(update={"completed_at": datetime.now(UTC)})
+    row.payload = intent.model_dump(mode="json")
+    await db.commit()
+    await _replan(db)
+    return intent.model_dump(mode="json")
+
+
+@app.delete("/api/intents/{intent_id}/complete")
+async def uncomplete_intent(intent_id: str, db: AsyncSession = Depends(session)) -> dict[str, Any]:
+    """Undo a completion — a misclick shouldn't require a delete-and-retype."""
+    row = await db.get(IntentRow, intent_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"no intent {intent_id!r}")
+    intent = Intent.model_validate(row.payload).model_copy(update={"completed_at": None})
+    row.payload = intent.model_dump(mode="json")
+    await db.commit()
+    await _replan(db)
+    return intent.model_dump(mode="json")
+
+
+@app.put("/api/intents/{intent_id}")
+async def update_intent(
+    intent_id: str, body: IntentIn, db: AsyncSession = Depends(session)
+) -> dict[str, Any]:
+    """Replace an intent in place, keeping its id.
+
+    Full replace rather than a per-field merge: fifteen interdependent fields
+    behind one cross-field validator make merge logic more code and more edge
+    cases than just re-validating the whole object, and the frontend already
+    has the whole thing in hand when it opens an edit form.
+
+    Keeping the id is the actual point — the previous plan is keyed by it, so
+    an edit keeps placement stability for every chunk still legal under the
+    new shape, where delete-and-recreate would throw all of it away and
+    reshuffle blocks that never needed to move.
+    """
+    row = await db.get(IntentRow, intent_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"no intent {intent_id!r}")
+    try:
+        intent = body.to_domain(intent_id, origin())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    # Neither field is settable from the wire — a Zoom link is server-issued
+    # on create, and completion has its own dedicated routes — so an edit
+    # must not silently wipe either as a side effect of `to_domain` defaulting
+    # them to None.
+    previous = Intent.model_validate(row.payload)
+    intent = intent.model_copy(
+        update={
+            "zoom_meeting_id": previous.zoom_meeting_id,
+            "zoom_join_url": previous.zoom_join_url,
+            "completed_at": previous.completed_at,
+        }
+    )
+    row.payload = intent.model_dump(mode="json")
+    await db.commit()
+    await _replan(db)
+    return intent.model_dump(mode="json")
 
 
 @app.put("/api/busy", status_code=200)
@@ -739,6 +829,27 @@ async def sync_outlook(db: AsyncSession = Depends(session)) -> dict[str, int]:
     return await _mirror(db, provider, "outlook")
 
 
+class CalendarPushIn(BaseModel):
+    provider: str
+
+
+@app.post("/api/calendar/push")
+async def push_calendar(
+    body: CalendarPushIn, db: AsyncSession = Depends(session)
+) -> dict[str, int]:
+    """Push the current plan onto the connected provider's "Horolog" calendar
+    right now, rather than waiting for the next background tick — the
+    explicit "sync now" a user reaches for after enabling write-back."""
+    if body.provider not in oauth.CALENDAR_PROVIDERS:
+        raise HTTPException(status_code=404, detail=f"unknown provider {body.provider!r}")
+    if not settings().calendar_writeback_enabled:
+        raise HTTPException(
+            status_code=409,
+            detail="calendar write-back is disabled — set HOROLOG_CALENDAR_WRITEBACK_ENABLED=true",
+        )
+    return await _push_calendar(db, body.provider)
+
+
 # --------------------------------------------------------------------------
 # OAuth connections
 # --------------------------------------------------------------------------
@@ -1058,6 +1169,25 @@ async def _sync_connected_calendars(db: AsyncSession) -> None:
             print(f"background sync: {provider_name} failed: {exc}", file=sys.stderr)
 
 
+async def _push_connected_calendars(db: AsyncSession) -> None:
+    """Push the plan onto every connected calendar, when write-back is on.
+
+    Same resilience shape as `_sync_connected_calendars`: one provider's
+    failure (an expired token, an unreachable API) must not stop the other or
+    the next tick.
+    """
+    if not settings().calendar_writeback_enabled:
+        return
+    connected = await oauth.connected_providers(db)
+    for provider_name in oauth.CALENDAR_PROVIDERS:
+        if provider_name not in connected:
+            continue
+        try:
+            await _push_calendar(db, provider_name)
+        except Exception as exc:  # a scheduled tick must never kill the loop
+            print(f"background push: {provider_name} failed: {exc}", file=sys.stderr)
+
+
 async def _sync_loop() -> None:
     """Background heartbeat started from `lifespan()`.
 
@@ -1071,6 +1201,7 @@ async def _sync_loop() -> None:
         await asyncio.sleep(interval_s)
         async with asynccontextmanager(session)() as db:
             await _sync_connected_calendars(db)
+            await _push_connected_calendars(db)
 
 
 async def _mirror(db: AsyncSession, provider: CalendarProvider, source: str) -> dict[str, int]:
@@ -1099,6 +1230,140 @@ async def _mirror(db: AsyncSession, provider: CalendarProvider, source: str) -> 
     await db.commit()
     plan = await _replan(db)
     return {"events": len(events), "blocks": len(plan.blocks)}
+
+
+async def _push_calendar(db: AsyncSession, provider_name: str) -> dict[str, int]:
+    """Diff the current plan against `synced_blocks` for one provider and
+    apply only what changed on that provider's dedicated "Horolog" calendar —
+    create, move, or remove one event per block that actually differs.
+
+    This is the write-side payoff of two-pass placement: the same property
+    that limits a re-solve to moving only the blocks actually hit limits a
+    push to one API call per block actually hit, not a wipe-and-recreate of
+    the whole calendar.
+    """
+    token = await oauth.valid_access_token(db, settings(), provider_name)
+    if not token:
+        raise HTTPException(status_code=409, detail=f"{provider_name} is not connected")
+
+    writer: GoogleCalendarWriter | OutlookCalendarWriter = (
+        GoogleCalendarWriter(token) if provider_name == "google" else OutlookCalendarWriter(token)
+    )
+
+    plan = await load_previous_plan(db) or await _replan(db)
+    base = origin()
+    titles = {i.id: i for i in await load_intents(db)}
+    current: dict[tuple[str, int, int], tuple[int, int, str]] = {
+        b.key: (
+            b.start_slot,
+            b.end_slot,
+            titles[b.intent_id].title if b.intent_id in titles else b.intent_id,
+        )
+        for b in plan.blocks
+    }
+
+    rows = list(
+        (await db.execute(select(SyncedBlockRow).where(SyncedBlockRow.provider == provider_name)))
+        .scalars()
+        .all()
+    )
+
+    created = moved = removed = 0
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        try:
+            calendar_id = await writer.ensure_calendar(client)
+        except SyncError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        # Every stored row points at the calendar that existed on the last
+        # push. If that no longer matches, the user deleted the Horolog
+        # calendar in the meantime and `ensure_calendar` just made a fresh
+        # one — every `event_id` below is dead. Forget them rather than
+        # silently treating an unmoved slot as "already written".
+        if rows and rows[0].calendar_id != calendar_id:
+            for row in rows:
+                await db.delete(row)
+            rows = []
+
+        synced = {(r.intent_id, r.occurrence, r.chunk): r for r in rows}
+        creates = [key for key in current if key not in synced]
+        updates = [
+            key
+            for key in current
+            if key in synced and (synced[key].start_slot, synced[key].end_slot) != current[key][:2]
+        ]
+        deletes = [key for key in synced if key not in current]
+
+        ops = creates + updates + deletes
+        if len(ops) > MAX_PUSH_OPS:
+            keep = set(ops[:MAX_PUSH_OPS])
+            creates = [k for k in creates if k in keep]
+            updates = [k for k in updates if k in keep]
+            deletes = [k for k in deletes if k in keep]
+
+        for key in creates:
+            intent_id, occurrence, chunk = key
+            start_slot, end_slot, title = current[key]
+            try:
+                event_id = await writer.create_event(
+                    client,
+                    calendar_id,
+                    title,
+                    from_slot(start_slot, base),
+                    from_slot(end_slot, base),
+                )
+            except SyncError as exc:
+                logger.warning(
+                    "push %s: could not create event for %r: %s", provider_name, title, exc
+                )
+                continue
+            db.add(
+                SyncedBlockRow(
+                    provider=provider_name,
+                    intent_id=intent_id,
+                    occurrence=occurrence,
+                    chunk=chunk,
+                    calendar_id=calendar_id,
+                    event_id=event_id,
+                    start_slot=start_slot,
+                    end_slot=end_slot,
+                )
+            )
+            created += 1
+
+        for key in updates:
+            row = synced[key]
+            start_slot, end_slot, _ = current[key]
+            try:
+                await writer.patch_event(
+                    client,
+                    calendar_id,
+                    row.event_id,
+                    from_slot(start_slot, base),
+                    from_slot(end_slot, base),
+                )
+            except SyncError as exc:
+                logger.warning(
+                    "push %s: could not move event %s: %s", provider_name, row.event_id, exc
+                )
+                continue
+            row.start_slot, row.end_slot = start_slot, end_slot
+            moved += 1
+
+        for key in deletes:
+            row = synced[key]
+            try:
+                await writer.delete_event(client, calendar_id, row.event_id)
+            except SyncError as exc:
+                logger.warning(
+                    "push %s: could not remove event %s: %s", provider_name, row.event_id, exc
+                )
+                continue
+            await db.delete(row)
+            removed += 1
+
+    await db.commit()
+    return {"created": created, "moved": moved, "removed": removed}
 
 
 async def _busy(db: AsyncSession) -> list[BusyInterval]:

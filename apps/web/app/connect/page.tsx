@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Shell } from "@/app/components/Shell";
-import { api, connections, sync, type Plan, type Provider } from "@/app/lib/api";
+import { api, calendarPush, connections, sync, type Plan, type Provider } from "@/app/lib/api";
 import {
   AlertCircle,
   Calendar,
@@ -12,9 +12,13 @@ import {
   Download,
   Server,
   Unplug,
+  UploadCloud,
 } from "lucide-react";
 
-type Result = { ok: true; count: number; label: string } | { ok: false; message: string } | null;
+type Result =
+  | { ok: true; count: number; label: string; kind?: "sync" | "push" }
+  | { ok: false; message: string }
+  | null;
 
 const CALENDAR_PROVIDERS: { id: Provider; label: string; icon: React.ReactNode }[] = [
   {
@@ -176,6 +180,24 @@ export default function Connect() {
     }
   }
 
+  async function pushCalendar(provider: "google" | "outlook") {
+    setPending(`push-${provider}`);
+    setResult(null);
+    try {
+      const out = await calendarPush.push(provider);
+      setResult({
+        ok: true,
+        count: out.created + out.moved + out.removed,
+        label: `${out.created} created, ${out.moved} moved, ${out.removed} removed`,
+        kind: "push",
+      });
+    } catch (caught) {
+      setResult({ ok: false, message: caught instanceof Error ? caught.message : "Push failed." });
+    } finally {
+      setPending(null);
+    }
+  }
+
   async function disconnect(provider: Provider) {
     setPending(provider);
     try {
@@ -260,7 +282,9 @@ export default function Connect() {
             )}
             <span>
               {result.ok
-                ? `Synced ${result.count} ${result.label}. Your plan has been rebuilt around them.`
+                ? result.kind === "push"
+                  ? `Pushed to the calendar: ${result.label}.`
+                  : `Synced ${result.count} ${result.label}. Your plan has been rebuilt around them.`
                 : result.message}
             </span>
           </div>
@@ -300,6 +324,22 @@ export default function Connect() {
                   {isConnected && (
                     <button
                       type="button"
+                      onClick={() => pushCalendar(p.id as "google" | "outlook")}
+                      disabled={pending !== null}
+                      aria-label={`Push the plan to ${p.label}`}
+                      title={`Push scheduled blocks onto a dedicated "Horolog" calendar on ${p.label} — needs HOROLOG_CALENDAR_WRITEBACK_ENABLED=true`}
+                      className="flex h-11 w-11 items-center justify-center rounded-xl border border-black/[0.08] bg-white text-fg-muted transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+                    >
+                      {pending === `push-${p.id}` ? (
+                        <span className="tabular text-[10px] font-semibold">…</span>
+                      ) : (
+                        <UploadCloud size={15} />
+                      )}
+                    </button>
+                  )}
+                  {isConnected && (
+                    <button
+                      type="button"
                       onClick={() => disconnect(p.id)}
                       disabled={pending !== null}
                       aria-label={`Disconnect ${p.label}`}
@@ -312,6 +352,15 @@ export default function Connect() {
                 </div>
               );
             })}
+            <p className="text-[12px] leading-relaxed text-fg-subtle">
+              <UploadCloud size={12} className="mb-0.5 mr-1 inline" />
+              Push writes scheduled blocks onto a dedicated &quot;Horolog&quot; calendar as real
+              events — never your primary calendar. Off by default; enable with{" "}
+              <code className="rounded bg-sunk px-1 py-0.5 font-mono">
+                HOROLOG_CALENDAR_WRITEBACK_ENABLED=true
+              </code>{" "}
+              and reconnect the account above once to grant write access.
+            </p>
           </div>
 
           <div className="border-t border-black/[0.06] pt-5">

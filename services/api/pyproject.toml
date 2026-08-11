@@ -1,6 +1,6 @@
 [project]
 name = "horolog"
-version = "0.1.0"
+version = "0.2.0"
 description = "Open-source, self-hostable AI calendar auto-scheduler"
 readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }

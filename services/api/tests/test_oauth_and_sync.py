@@ -20,11 +20,12 @@ _tmpdir = tempfile.mkdtemp()
 os.environ["HOROLOG_DATABASE_URL"] = f"sqlite+aiosqlite:///{_tmpdir}/oauth.db"
 
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from horolog import oauth
-from horolog.api import app
-from horolog.db import OAuthTokenRow, init_db, session
+from horolog.api import _push_calendar, app
+from horolog.db import OAuthTokenRow, SyncedBlockRow, init_db, session
 from horolog.integrations import clickup, github, jira, notion, todoist
 from horolog.integrations.google_calendar import GoogleCalendarProvider
 from horolog.integrations.outlook_calendar import OutlookCalendarProvider
@@ -41,6 +42,15 @@ async def client() -> AsyncIterator[AsyncClient]:
         await http.put("/api/busy", json=[])
         for provider in oauth.PROVIDERS:
             await http.delete(f"/api/connections/{provider}")
+        # No HTTP route touches this table — it is push state, not something
+        # a user calls — so it needs its own cleanup or a synced_blocks row
+        # left behind by one test's fake calendar id colliding with the next
+        # test's silently corrupts the second test's diff.
+        gen = cast("AsyncGenerator[AsyncSession, None]", session())
+        db = await anext(gen)
+        await db.execute(delete(SyncedBlockRow))
+        await db.commit()
+        await gen.aclose()
         yield http
 
 
@@ -895,3 +905,349 @@ async def test_background_sync_skips_a_failed_provider_without_stopping_the_next
     assert any(b["source"] == "outlook" and "1:1" in b["label"] for b in plan["busy"]), (
         "outlook must still sync even though google failed in the same tick"
     )
+
+
+# --------------------------------------------------------------- calendar push (write-back)
+
+
+@pytest.mark.asyncio
+async def test_google_fetch_follows_pagination(mock_http: Callable[..., None]) -> None:
+    """A dense window past one page must not silently truncate — the same bug
+    class fixed for the tracker integrations in `ae2bd11`."""
+    from zoneinfo import ZoneInfo
+
+    pages = {
+        None: {
+            "items": [
+                {
+                    "id": "a",
+                    "summary": "Page one",
+                    "status": "confirmed",
+                    "start": {"dateTime": "2026-08-10T14:00:00-04:00"},
+                    "end": {"dateTime": "2026-08-10T15:00:00-04:00"},
+                }
+            ],
+            "nextPageToken": "p2",
+        },
+        "p2": {
+            "items": [
+                {
+                    "id": "b",
+                    "summary": "Page two",
+                    "status": "confirmed",
+                    "start": {"dateTime": "2026-08-11T14:00:00-04:00"},
+                    "end": {"dateTime": "2026-08-11T15:00:00-04:00"},
+                }
+            ],
+        },
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        token = request.url.params.get("pageToken")
+        return httpx.Response(200, json=pages[token])
+
+    mock_http(handler)
+    provider = GoogleCalendarProvider("tok", ZoneInfo("America/New_York"))
+    base = datetime(2026, 8, 10, tzinfo=ZoneInfo("America/New_York"))
+    events = await provider.fetch(base, 7)
+    assert {e.label for e in events} == {"Page one", "Page two"}
+
+
+@pytest.mark.asyncio
+async def test_outlook_fetch_follows_pagination(mock_http: Callable[..., None]) -> None:
+    from zoneinfo import ZoneInfo
+
+    second_page = {
+        "value": [
+            {
+                "id": "b",
+                "subject": "Page two",
+                "showAs": "busy",
+                "start": {"dateTime": "2026-08-11T18:00:00.0000000"},
+                "end": {"dateTime": "2026-08-11T19:00:00.0000000"},
+            }
+        ]
+    }
+    first_page = {
+        "value": [
+            {
+                "id": "a",
+                "subject": "Page one",
+                "showAs": "busy",
+                "start": {"dateTime": "2026-08-10T18:00:00.0000000"},
+                "end": {"dateTime": "2026-08-10T19:00:00.0000000"},
+            }
+        ],
+        "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/calendarview?$skip=1",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=second_page if "$skip" in str(request.url) else first_page)
+
+    mock_http(handler)
+    provider = OutlookCalendarProvider("tok", ZoneInfo("UTC"))
+    base = datetime(2026, 8, 10, tzinfo=ZoneInfo("UTC"))
+    events = await provider.fetch(base, 7)
+    assert {e.label for e in events} == {"Page one", "Page two"}
+
+
+class _FakeGoogleBackend:
+    """A minimal in-memory stand-in for the parts of the Calendar API the
+    writer touches: a calendar list/create, and per-calendar event
+    create/patch/delete. State persists across calls within one test, the
+    same way a real account would, so a diff-based push can be exercised
+    across multiple `_push_calendar` calls rather than one request at a time.
+    """
+
+    def __init__(self) -> None:
+        self.calendars: dict[str, str] = {}
+        self.events: dict[str, dict[str, dict[str, object]]] = {"primary": {}}
+        self.calls: list[tuple[str, str]] = []
+        self._n = 0
+
+    def _next_id(self, prefix: str) -> str:
+        self._n += 1
+        return f"{prefix}{self._n}"
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        method, path = request.method, request.url.path
+        self.calls.append((method, path))
+        body = json.loads(request.content) if request.content else {}
+
+        if path == "/calendar/v3/users/me/calendarList" and method == "GET":
+            items = [{"id": cid, "summary": name} for cid, name in self.calendars.items()]
+            return httpx.Response(200, json={"items": items})
+        if path == "/calendar/v3/calendars" and method == "POST":
+            cid = self._next_id("cal")
+            self.calendars[cid] = body["summary"]
+            self.events[cid] = {}
+            return httpx.Response(200, json={"id": cid})
+        if path == "/calendar/v3/calendars/primary/events" and method == "GET":
+            return httpx.Response(200, json={"items": list(self.events["primary"].values())})
+
+        parts = path.split("/")
+        if len(parts) >= 6 and parts[3] == "calendars" and parts[5] == "events":
+            cid = parts[4]
+            if len(parts) == 6 and method == "POST":
+                eid = self._next_id("evt")
+                self.events.setdefault(cid, {})[eid] = {"id": eid, **body}
+                return httpx.Response(200, json={"id": eid})
+            if len(parts) == 7:
+                eid = parts[6]
+                if method == "PATCH":
+                    if eid not in self.events.get(cid, {}):
+                        return httpx.Response(404, json={})
+                    self.events[cid][eid].update(body)
+                    return httpx.Response(200, json={"id": eid})
+                if method == "DELETE":
+                    if eid not in self.events.get(cid, {}):
+                        return httpx.Response(404, json={})
+                    del self.events[cid][eid]
+                    return httpx.Response(204)
+        return httpx.Response(404, json={"error": f"unhandled {method} {path}"})
+
+
+@pytest_asyncio.fixture
+async def with_writeback(monkeypatch: pytest.MonkeyPatch, db: AsyncSession) -> None:
+    monkeypatch.setattr(settings(), "calendar_writeback_enabled", True)
+    await oauth.save_token(db, "google", {"access_token": "tok"})
+
+
+@pytest.mark.asyncio
+async def test_calendar_push_requires_a_connection(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings(), "calendar_writeback_enabled", True)
+    refused = await client.post("/api/calendar/push", json={"provider": "google"})
+    assert refused.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_calendar_push_is_disabled_by_default(client: AsyncClient, db: AsyncSession) -> None:
+    await oauth.save_token(db, "google", {"access_token": "tok"})
+    refused = await client.post("/api/calendar/push", json={"provider": "google"})
+    assert refused.status_code == 409
+    assert "disabled" in refused.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_calendar_push_creates_one_event_per_block(
+    client: AsyncClient, mock_http: Callable[..., None], db: AsyncSession, with_writeback: None
+) -> None:
+    await client.post("/api/intents", json={"title": "Write it back", "minutes_per_period": 60})
+
+    backend = _FakeGoogleBackend()
+    mock_http(backend.handle)
+    result = await _push_calendar(db, "google")
+    assert result == {"created": 1, "moved": 0, "removed": 0}
+
+    [calendar_id] = backend.calendars
+    assert backend.calendars[calendar_id] == "Horolog"
+    [event] = backend.events[calendar_id].values()
+    assert event["summary"] == "Write it back"
+
+    rows = (await db.execute(select(SyncedBlockRow))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].event_id == event["id"]
+
+
+@pytest.mark.asyncio
+async def test_calendar_push_twice_with_nothing_changed_is_a_noop(
+    client: AsyncClient, mock_http: Callable[..., None], db: AsyncSession, with_writeback: None
+) -> None:
+    """The write-back mirror of the read side's 're-plan with nothing changed
+    is a provable no-op': a second push must issue no create/patch/delete."""
+    await client.post("/api/intents", json={"title": "Steady", "minutes_per_period": 60})
+
+    backend = _FakeGoogleBackend()
+    mock_http(backend.handle)
+    await _push_calendar(db, "google")
+    calls_before = len(backend.calls)
+
+    result = await _push_calendar(db, "google")
+    assert result == {"created": 0, "moved": 0, "removed": 0}
+    new_calls = backend.calls[calls_before:]
+    assert all(method == "GET" for method, _ in new_calls), (
+        f"a no-op push must only resolve the calendar, not write: {new_calls}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_calendar_push_moves_only_the_block_that_actually_shifted(
+    client: AsyncClient, mock_http: Callable[..., None], db: AsyncSession, with_writeback: None
+) -> None:
+    """Two intents pushed, then a real collision forces a re-solve that moves
+    one of them — the diff must PATCH exactly that one event and leave the
+    other untouched, the write-side version of the two-pass placer's
+    'only the blocks actually hit move' guarantee."""
+    a = (
+        await client.post(
+            "/api/intents",
+            json={
+                "title": "Anchor",
+                "minutes_per_period": 60,
+                "min_chunk_minutes": 60,
+                "max_chunk_minutes": 60,
+                "window_start_min": 540,
+                "window_end_min": 600,
+            },
+        )
+    ).json()
+    b = (
+        await client.post(
+            "/api/intents",
+            json={
+                "title": "Mover",
+                "minutes_per_period": 60,
+                "min_chunk_minutes": 60,
+                "max_chunk_minutes": 60,
+                "window_start_min": 600,
+                "window_end_min": 720,
+            },
+        )
+    ).json()
+
+    backend = _FakeGoogleBackend()
+    mock_http(backend.handle)
+    await _push_calendar(db, "google")
+    [calendar_id] = backend.calendars
+    assert len(backend.events[calendar_id]) == 2
+    event_ids_before = {eid: e["start"] for eid, e in backend.events[calendar_id].items()}
+
+    # A real meeting lands directly on "Mover"'s only legal window, so a
+    # re-solve has to relocate it while "Anchor" — untouched — stays put.
+    plan_before = await client.get("/api/plan")
+    origin_iso = plan_before.json()["origin"]
+    base = datetime.fromisoformat(origin_iso)
+    await client.put(
+        "/api/busy",
+        json=[
+            {
+                "label": "Surprise meeting",
+                "start": (base + timedelta(hours=10)).isoformat(),
+                "end": (base + timedelta(hours=11)).isoformat(),
+            }
+        ],
+    )
+
+    result = await _push_calendar(db, "google")
+    assert result["moved"] == 1
+    assert result["created"] == 0
+    assert result["removed"] == 0
+
+    events_after = backend.events[calendar_id]
+    assert len(events_after) == 2, "the moved block is patched in place, not deleted and recreated"
+    unchanged = [eid for eid, e in events_after.items() if e["start"] == event_ids_before.get(eid)]
+    assert len(unchanged) == 1, "exactly one of the two events must have kept its original time"
+
+    for intent in (a, b):
+        assert intent  # created successfully above
+
+
+@pytest.mark.asyncio
+async def test_calendar_push_deletes_the_event_for_a_removed_intent(
+    client: AsyncClient, mock_http: Callable[..., None], db: AsyncSession, with_writeback: None
+) -> None:
+    created = (
+        await client.post("/api/intents", json={"title": "Temporary", "minutes_per_period": 60})
+    ).json()
+
+    backend = _FakeGoogleBackend()
+    mock_http(backend.handle)
+    await _push_calendar(db, "google")
+    [calendar_id] = backend.calendars
+    assert len(backend.events[calendar_id]) == 1
+
+    await client.delete(f"/api/intents/{created['id']}")
+    result = await _push_calendar(db, "google")
+    assert result == {"created": 0, "moved": 0, "removed": 1}
+    assert backend.events[calendar_id] == {}
+    rows = (await db.execute(select(SyncedBlockRow))).scalars().all()
+    assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_calendar_push_never_leaks_its_own_events_back_as_busy_time(
+    client: AsyncClient, mock_http: Callable[..., None], db: AsyncSession, with_writeback: None
+) -> None:
+    """The whole reason write-back targets a secondary calendar: events it
+    creates must never come back through `fetch` (which reads only
+    `calendars/primary/events`) as busy time the solver then schedules
+    around, or the app would eat its own tail."""
+    await client.post("/api/intents", json={"title": "Self-contained", "minutes_per_period": 60})
+
+    backend = _FakeGoogleBackend()
+    mock_http(backend.handle)
+    await _push_calendar(db, "google")
+    [calendar_id] = backend.calendars
+    assert len(backend.events[calendar_id]) == 1
+    assert backend.events["primary"] == {}, "the writer must never touch the primary calendar"
+
+    synced = await client.post("/api/sync/google")
+    assert synced.json()["events"] == 0
+
+
+@pytest.mark.asyncio
+async def test_calendar_push_surfaces_a_reconnect_message_on_scope_rejection(
+    client: AsyncClient, mock_http: Callable[..., None], with_writeback: None
+) -> None:
+    """An old, read-only-scoped token must fail with an actionable message,
+    not a bare 500 — this is what a user upgrading past the 0.2.0 scope
+    change actually sees before reconnecting."""
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"error": "insufficient scope"})
+
+    mock_http(handler)
+    response = await client.post("/api/calendar/push", json={"provider": "google"})
+    assert response.status_code == 502
+    assert "reconnect" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_calendar_push_unknown_provider_is_rejected(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings(), "calendar_writeback_enabled", True)
+    response = await client.post("/api/calendar/push", json={"provider": "notacalendar"})
+    assert response.status_code == 404

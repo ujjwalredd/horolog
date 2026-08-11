@@ -47,22 +47,67 @@ export interface Plan {
   horizon_days: number;
 }
 
+export interface DailyWindow {
+  start_min: number;
+  end_min: number;
+}
+
 export interface Intent {
   id: string;
   title: string;
   kind: IntentKind;
   priority: Priority;
-  energy?: EnergyLevel;
+  energy?: EnergyLevel | null;
   minutes_per_period: number;
   period_days: number | null;
   min_chunk_minutes: number;
   max_chunk_minutes: number;
+  max_per_day?: number | null;
+  daily_windows?: DailyWindow[];
+  earliest_slot?: number | null;
+  due_slot?: number | null;
+  preferred_start_min?: number | null;
+  /** Set once, on a one-shot task only - see `complete`/`uncomplete` below. */
+  completed_at?: string | null;
   /** Slot ranges (not clock times) other attendees are busy - present only
    *  on meeting-kind intents. Its length is the useful part for display. */
   blocked_slots?: [number, number][];
   /** Set automatically when HOROLOG_ZOOM_* is configured server-side - a
    *  no-fixed-time meeting link, present only on meeting-kind intents. */
   zoom_join_url?: string | null;
+}
+
+export const SLOT_MINUTES = 15;
+
+function slotToISO(slot: number, origin: string): string {
+  return new Date(Date.parse(origin) + slot * SLOT_MINUTES * 60000).toISOString();
+}
+
+/** Rebuilds a full `PUT /api/intents/{id}` body from a stored `Intent`, so an
+ *  edit that only changes (say) duration doesn't silently drop the window,
+ *  due date or chunk shape the intent already had - the API replaces the
+ *  whole object, it does not merge. Not lossless for a Smart Meeting's
+ *  attendee constraints: `blocked_slots` carries no attendee names, only the
+ *  slot spans, so there is nothing to reconstruct `attendee_busy` from - the
+ *  edit UI does not offer editing meetings for exactly this reason. */
+export function intentToEditPayload(intent: Intent, origin: string): Record<string, unknown> {
+  const window = intent.daily_windows?.[0];
+  return {
+    title: intent.title,
+    kind: intent.kind,
+    priority: intent.priority,
+    energy: intent.energy ?? undefined,
+    minutes_per_period: intent.minutes_per_period,
+    period_days: intent.period_days ?? undefined,
+    min_chunk_minutes: intent.min_chunk_minutes,
+    max_chunk_minutes: intent.max_chunk_minutes,
+    max_per_day: intent.max_per_day ?? undefined,
+    window_start_min: window?.start_min,
+    window_end_min: window?.end_min,
+    due: intent.due_slot != null ? slotToISO(intent.due_slot, origin) : undefined,
+    earliest: intent.earliest_slot != null ? slotToISO(intent.earliest_slot, origin) : undefined,
+    preferred_start_min: intent.preferred_start_min ?? undefined,
+  };
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -90,6 +135,11 @@ export const api = {
   resolve: () => request<Plan>("/api/plan/solve", { method: "POST" }),
   intents: () => request<Intent[]>("/api/intents"),
   remove: (id: string) => request<void>(`/api/intents/${id}`, { method: "DELETE" }),
+  update: (id: string, body: Record<string, unknown>) =>
+    request<Intent>(`/api/intents/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  complete: (id: string) => request<Intent>(`/api/intents/${id}/complete`, { method: "POST" }),
+  uncomplete: (id: string) =>
+    request<Intent>(`/api/intents/${id}/complete`, { method: "DELETE" }),
   capture: (text: string, provider?: string, model?: string, apiKey?: string) =>
     request<{ intent: Intent }>("/api/capture", {
       method: "POST",
@@ -210,6 +260,24 @@ export const sync = {
   google: () => request<{ events: number; blocks: number }>("/api/sync/google", { method: "POST" }),
   outlook: () =>
     request<{ events: number; blocks: number }>("/api/sync/outlook", { method: "POST" }),
+};
+
+export interface CalendarPushResult {
+  created: number;
+  moved: number;
+  removed: number;
+}
+
+export const calendarPush = {
+  /** Pushes the plan onto the connected provider's "Horolog" calendar right
+   *  now. 409s if write-back is off (`HOROLOG_CALENDAR_WRITEBACK_ENABLED`)
+   *  or the provider isn't connected; 502 with a reconnect message if the
+   *  stored token predates the write scope. */
+  push: (provider: "google" | "outlook") =>
+    request<CalendarPushResult>("/api/calendar/push", {
+      method: "POST",
+      body: JSON.stringify({ provider }),
+    }),
 };
 
 export const connections = {

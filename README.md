@@ -4,7 +4,7 @@
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB.svg?logo=python&logoColor=white)](services/api/pyproject.toml)
 [![Next.js 15](https://img.shields.io/badge/Next.js-15-000000.svg?logo=next.js&logoColor=white)](apps/web/package.json)
 [![CI Status](https://img.shields.io/github/actions/workflow/status/ujjwalredd/horolog/ci.yml?branch=main&label=CI)](.github/workflows/ci.yml)
-[![Changelog](https://img.shields.io/badge/Changelog-0.1.0-lightgrey.svg)](CHANGELOG.md)
+[![Changelog](https://img.shields.io/badge/Changelog-0.2.0-lightgrey.svg)](CHANGELOG.md)
 
 ![Horolog Interface Banner](docs/hero.png)
 
@@ -50,6 +50,10 @@ moved, 16 untouched.** An earlier single-pass placer moved 16 of 20 - the
 regression test that pins this is
 [`test_a_busy_week_does_not_cascade`](services/api/tests/test_solver.py).
 
+The same property pays off on the way out, too: pushing the plan onto a real
+calendar (below) diffs against the last push, so those same 4 moved blocks
+become **4 API calls, not a wipe-and-recreate of the whole calendar.**
+
 ---
 
 ## The five agents
@@ -73,6 +77,7 @@ Three more, built on the same engine:
 | **Booking links** | `/book/<name>` offers *true* free time from `GET /api/availability`: hours holding flexible focus work are still bookable, because accepting one moves that work rather than colliding with it. Only real commitments close a slot. `POST /api/book` writes the accepted meeting to the calendar mirror and re-solves around it. |
 | **Multi-Provider Integrations** | Native sync modules for **Linear**, **Todoist**, **GitHub Issues**, **Notion**, **ClickUp**, and **Jira** (all under `services/api/horolog/integrations/`). Tasks and issues automatically schedule as fluid work around your real-life calendar. |
 | **Zoom links** | Set `HOROLOG_ZOOM_*` and every Smart Meeting gets a real Zoom link automatically — a "no fixed time" meeting, so it stays correct no matter how the solver moves the block later. Off by default; never blocks scheduling if Zoom is unreachable. |
+| **Calendar write-back** | Push scheduled blocks onto a dedicated "Horolog" calendar on a connected Google or Outlook account, as real events colleagues can see and can't double-book — never your primary calendar, so it can never be read back as busy time Horolog then schedules around. Off by default (`HOROLOG_CALENDAR_WRITEBACK_ENABLED`); Outlook needs the broader `Calendars.ReadWrite` scope since Graph has no "only what this app created" equivalent to Google's. |
 
 > **Booking links have no authentication.** `/book/<name>` is a display label,
 > not an identity — this is a single-user, self-hosted app. Put the route behind
@@ -194,7 +199,7 @@ there is no CORS to configure. Override with `HOROLOG_API_URL`.
 ### Tests and checks
 
 ```bash
-npm test       # 95 tests, ~1s
+npm test       # 143 tests, ~3s
 npm run bench  # solve-time + quality benchmark
 npm run check  # ruff + ruff format + mypy strict + pytest, then tsc + next build
 ```
