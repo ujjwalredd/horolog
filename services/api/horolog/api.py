@@ -524,7 +524,17 @@ class LinearSyncIn(BaseModel):
 
 
 async def _resolve_credential(db: AsyncSession, provider: str, pasted: str) -> str:
-    """A pasted key wins; otherwise fall back to a stored OAuth connection."""
+    """A pasted key wins; otherwise fall back to a stored OAuth connection.
+
+    Stripped, not just checked for emptiness: a key copied from a terminal
+    or a text field routinely carries a trailing newline or space, and that
+    one invisible character turns into `Authorization: Bearer <key> ` — a
+    header value httpx's own validation rejects outright, well before the
+    request ever reaches the provider. A whitespace-only paste is treated as
+    no paste at all, falling through to a stored OAuth connection same as
+    an empty one would.
+    """
+    pasted = pasted.strip()
     if pasted:
         return pasted
     token = await oauth.valid_access_token(db, settings(), provider)
@@ -643,10 +653,16 @@ async def _require_pasted_credential(body: TokenSyncIn, provider: str) -> str:
     """These three trackers have no OAuth app to fall back to (see
     integrations/{notion,clickup,jira}.py's docstrings for why) — a pasted
     credential is the only path, so its absence is the caller's mistake to
-    fix, not a 409 "go connect it" that implies a button that doesn't exist."""
-    if not body.token:
+    fix, not a 409 "go connect it" that implies a button that doesn't exist.
+
+    Stripped for the same reason `_resolve_credential` strips its own pasted
+    key — a trailing newline from a copy-paste turns into an HTTP header
+    httpx refuses to send, well before the request reaches the provider.
+    """
+    token = body.token.strip()
+    if not token:
         raise HTTPException(status_code=422, detail=f"paste a {provider} credential first")
-    return body.token
+    return token
 
 
 @app.post("/api/sync/notion")

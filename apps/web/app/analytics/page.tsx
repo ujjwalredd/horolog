@@ -137,16 +137,22 @@ export default function AnalyticsPage() {
 }
 
 /** Animates toward `target`, easing out over `durationMs` — skipped entirely
- *  under prefers-reduced-motion, which jumps straight to the final value. */
+ *  under prefers-reduced-motion, which jumps straight to the final value.
+ *
+ *  Anchors each new animation to the value actually on screen right now
+ *  (`shown`, updated every tick), not to the previous `target` — two
+ *  re-solves landing within one `durationMs` of each other would otherwise
+ *  make the number visibly jump to the stale midpoint before continuing. */
 function useCountUp(target: number, durationMs = 400): number {
   const [display, setDisplay] = useState(target);
-  const from = useRef(target);
+  const shown = useRef(target);
 
   useEffect(() => {
-    const start = from.current;
-    from.current = target;
+    const start = shown.current;
+    if (start === target) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduced || start === target) {
+    if (reduced) {
+      shown.current = target;
       setDisplay(target);
       return;
     }
@@ -155,7 +161,9 @@ function useCountUp(target: number, durationMs = 400): number {
     const tick = (now: number) => {
       const t = Math.min(1, (now - startTime) / durationMs);
       const eased = 1 - (1 - t) ** 3; // ease-out-cubic
-      setDisplay(start + (target - start) * eased);
+      const value = start + (target - start) * eased;
+      shown.current = value;
+      setDisplay(value);
       if (t < 1) frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);

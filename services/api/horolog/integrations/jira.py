@@ -13,6 +13,11 @@ from horolog.domain.time import SLOT_MINUTES
 DEFAULT_MINUTES = 45
 """What an un-estimated issue is worth — same reasoning as todoist.py's."""
 
+MAX_PAGES = 10
+"""Jira returns up to 100 issues per page (default 50) — a hard cap on
+pages, not on issues found, so a pathological project cannot turn one sync
+into an unbounded number of requests."""
+
 # Jira Cloud's default priority scheme, highest to lowest. A site that has
 # renamed or added priorities falls through to the P3 default below rather
 # than raising — an unrecognised name is not a reason to fail the sync.
@@ -58,48 +63,64 @@ async def fetch_jira_issues(credential: str, timeout: float = 30.0) -> list[Jira
     this is a three-part credential rather than the single string every other
     tracker here takes.
     """
-    parts = credential.split(":", 2)
+    parts = [p.strip() for p in credential.split(":", 2)]
     if len(parts) != 3 or not all(parts):
         raise JiraError("expected site:email:api_token")
     site, email, token = parts
 
     basic = base64.b64encode(f"{email}:{token}".encode()).decode()
+    issues: list[JiraIssue] = []
+    start_at = 0
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(
-                f"https://{site}.atlassian.net/rest/api/3/search",
-                headers={"Authorization": f"Basic {basic}", "Accept": "application/json"},
-                params={
-                    "jql": "assignee = currentUser() AND resolution = Unresolved",
-                    "fields": "summary,priority,timeestimate",
-                },
-            )
-            response.raise_for_status()
-            body = response.json()
+            for _ in range(MAX_PAGES):
+                response = await client.get(
+                    f"https://{site}.atlassian.net/rest/api/3/search",
+                    headers={"Authorization": f"Basic {basic}", "Accept": "application/json"},
+                    params={
+                        "jql": "assignee = currentUser() AND resolution = Unresolved",
+                        "fields": "summary,priority,timeestimate",
+                        "startAt": str(start_at),
+                    },
+                )
+                response.raise_for_status()
+                body = response.json()
+                if not isinstance(body, dict):
+                    break
+                nodes = body.get("issues", [])
+                for node in nodes:
+                    if not isinstance(node, dict) or not node.get("id"):
+                        continue
+                    raw_fields = node.get("fields")
+                    fields: dict[str, object] = raw_fields if isinstance(raw_fields, dict) else {}
+                    summary = str(fields.get("summary") or "").strip()
+                    if not summary:
+                        continue
+                    priority_field = fields.get("priority")
+                    priority_name = (
+                        priority_field.get("name") if isinstance(priority_field, dict) else None
+                    )
+                    priority = (
+                        _PRIORITY_MAP.get(priority_name, Priority.P3)
+                        if priority_name
+                        else Priority.P3
+                    )
+                    issues.append(
+                        JiraIssue(
+                            id=str(node["id"]),
+                            key=str(node.get("key", "")),
+                            summary=summary,
+                            priority=priority,
+                            minutes=_minutes_for(fields),
+                        )
+                    )
+                total = body.get("total")
+                start_at += len(nodes)
+                if not nodes or not isinstance(total, int) or start_at >= total:
+                    break
     except httpx.HTTPError as exc:
         raise JiraError(f"could not reach Jira: {exc}") from exc
     except ValueError as exc:
         raise JiraError("Jira returned something that was not JSON") from exc
 
-    issues: list[JiraIssue] = []
-    for node in body.get("issues", []) if isinstance(body, dict) else []:
-        if not isinstance(node, dict) or not node.get("id"):
-            continue
-        raw_fields = node.get("fields")
-        fields: dict[str, object] = raw_fields if isinstance(raw_fields, dict) else {}
-        summary = str(fields.get("summary") or "").strip()
-        if not summary:
-            continue
-        priority_field = fields.get("priority")
-        priority_name = priority_field.get("name") if isinstance(priority_field, dict) else None
-        priority = _PRIORITY_MAP.get(priority_name, Priority.P3) if priority_name else Priority.P3
-        issues.append(
-            JiraIssue(
-                id=str(node["id"]),
-                key=str(node.get("key", "")),
-                summary=summary,
-                priority=priority,
-                minutes=_minutes_for(fields),
-            )
-        )
     return issues

@@ -16,6 +16,11 @@ DEFAULT_MINUTES = 45
 """Notion pages carry no standard duration property — most imported tasks
 land on this default, same reasoning as todoist.py's."""
 
+MAX_PAGES = 10
+"""Notion returns at most 100 rows per query — a hard cap on pages, not on
+rows found, so a pathological database (thousands of rows) cannot turn one
+sync into an unbounded number of requests."""
+
 
 class NotionTask(BaseModel):
     """One database page, reduced to what the scheduler needs."""
@@ -55,28 +60,40 @@ async def fetch_notion_tasks(credential: str, timeout: float = 30.0) -> list[Not
     UI for one provider.
     """
     database_id, _, token = credential.partition(":")
+    database_id, token = database_id.strip(), token.strip()
     if not database_id or not token:
         raise NotionError("expected database_id:integration_token")
 
+    tasks: list[NotionTask] = []
+    cursor: str | None = None
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(
-                f"https://api.notion.com/v1/databases/{database_id}/query",
-                headers={"Authorization": f"Bearer {token}", "Notion-Version": _API_VERSION},
-            )
-            response.raise_for_status()
-            body = response.json()
+            for _ in range(MAX_PAGES):
+                payload = {"start_cursor": cursor} if cursor else {}
+                response = await client.post(
+                    f"https://api.notion.com/v1/databases/{database_id}/query",
+                    headers={"Authorization": f"Bearer {token}", "Notion-Version": _API_VERSION},
+                    json=payload,
+                )
+                response.raise_for_status()
+                body = response.json()
+                if not isinstance(body, dict):
+                    break
+                for page in body.get("results", []):
+                    if not isinstance(page, dict) or not page.get("id"):
+                        continue
+                    title = _title(page)
+                    if not title:
+                        continue
+                    tasks.append(NotionTask(id=str(page["id"]), title=title))
+                if not body.get("has_more"):
+                    break
+                cursor = body.get("next_cursor")
+                if not cursor:
+                    break
     except httpx.HTTPError as exc:
         raise NotionError(f"could not reach Notion: {exc}") from exc
     except ValueError as exc:
         raise NotionError("Notion returned something that was not JSON") from exc
 
-    tasks: list[NotionTask] = []
-    for page in body.get("results", []) if isinstance(body, dict) else []:
-        if not isinstance(page, dict) or not page.get("id"):
-            continue
-        title = _title(page)
-        if not title:
-            continue
-        tasks.append(NotionTask(id=str(page["id"]), title=title))
     return tasks

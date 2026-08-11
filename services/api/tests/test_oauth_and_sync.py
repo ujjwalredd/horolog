@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 import tempfile
 import time
@@ -381,6 +382,45 @@ async def test_todoist_falls_back_to_a_stored_oauth_connection(
     assert seen["auth"] == "Bearer from-oauth"
 
 
+@pytest.mark.asyncio
+async def test_pasted_token_whitespace_is_stripped_before_use(
+    client: AsyncClient, mock_http: Callable[..., None]
+) -> None:
+    """A key copied from a terminal or text field routinely carries a
+    trailing newline or space. Left in, `Authorization: Bearer <key> ` is a
+    header value httpx's own validation rejects outright — a crash a user
+    would see as a broken sync button, not a bad paste. Regression test."""
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["auth"] = request.headers["authorization"]
+        return httpx.Response(200, json=[])
+
+    mock_http(handler)
+    synced = await client.post("/api/sync/todoist", json={"token": "  tok\n"})
+    assert synced.status_code == 200
+    assert seen["auth"] == "Bearer tok"
+
+
+@pytest.mark.asyncio
+async def test_pasted_token_whitespace_only_falls_back_to_oauth(
+    client: AsyncClient, mock_http: Callable[..., None], db: AsyncSession
+) -> None:
+    """A whitespace-only paste (an empty field plus a stray space) must be
+    treated as no paste at all, not as a real — and then invalid — key."""
+    await oauth.save_token(db, "todoist", {"access_token": "from-oauth"})
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["auth"] = request.headers["authorization"]
+        return httpx.Response(200, json=[])
+
+    mock_http(handler)
+    synced = await client.post("/api/sync/todoist", json={"token": "   "})
+    assert synced.status_code == 200
+    assert seen["auth"] == "Bearer from-oauth"
+
+
 # -------------------------------------------------------------------- notion
 
 
@@ -439,11 +479,78 @@ async def test_notion_sync_creates_placeable_intents(
 
 
 @pytest.mark.asyncio
+async def test_notion_sync_follows_pagination(
+    client: AsyncClient, mock_http: Callable[..., None]
+) -> None:
+    """A database with more rows than fit on one page must not silently
+    truncate — this is the regression test for that bug."""
+    pages = {
+        None: {
+            "results": [
+                {
+                    "id": "1",
+                    "properties": {
+                        "Name": {"type": "title", "title": [{"plain_text": "First page"}]}
+                    },
+                }
+            ],
+            "has_more": True,
+            "next_cursor": "cursor-2",
+        },
+        "cursor-2": {
+            "results": [
+                {
+                    "id": "2",
+                    "properties": {
+                        "Name": {"type": "title", "title": [{"plain_text": "Second page"}]}
+                    },
+                }
+            ],
+            "has_more": False,
+            "next_cursor": None,
+        },
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content or b"{}")
+        return httpx.Response(200, json=pages[body.get("start_cursor")])
+
+    mock_http(handler)
+    tasks = await notion.fetch_notion_tasks("db123:secret")
+    assert [t.title for t in tasks] == ["First page", "Second page"]
+
+
+@pytest.mark.asyncio
 async def test_notion_sync_without_a_credential_is_refused(client: AsyncClient) -> None:
     """No OAuth app exists for Notion — an empty body must be a clear 422,
     never a 409 implying a "Connect" button that isn't rendered."""
     response = await client.post("/api/sync/notion", json={"token": ""})
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_notion_sync_whitespace_only_credential_is_refused(client: AsyncClient) -> None:
+    """A whitespace-only paste must be refused the same as an empty one, not
+    passed through to a crashing header value. Regression test — this key-
+    only path uses a different helper than the OAuth-capable trackers'."""
+    response = await client.post("/api/sync/notion", json={"token": "   "})
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_notion_sync_credential_whitespace_is_stripped(
+    client: AsyncClient, mock_http: Callable[..., None]
+) -> None:
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["auth"] = request.headers["authorization"]
+        return httpx.Response(200, json={"results": []})
+
+    mock_http(handler)
+    synced = await client.post("/api/sync/notion", json={"token": "  db123:secret\n"})
+    assert synced.status_code == 200
+    assert seen["auth"] == "Bearer secret"
 
 
 # ------------------------------------------------------------------- clickup
@@ -492,6 +599,26 @@ async def test_clickup_sync_creates_placeable_intents(
     assert synced.json()["tasks"] == 1
     plan = (await client.get("/api/plan")).json()
     assert [b for b in plan["blocks"] if "Fix the bug" in b["title"]]
+
+
+@pytest.mark.asyncio
+async def test_clickup_sync_follows_pagination(mock_http: Callable[..., None]) -> None:
+    """A full first page (100 tasks, ClickUp's own page size) must not be
+    mistaken for the end of the list — this is the regression test."""
+    first_page = [{"id": str(i), "name": f"Task {i}"} for i in range(100)]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/user"):
+            return httpx.Response(200, json={"user": {"id": 42}})
+        page = request.url.params["page"]
+        if page == "0":
+            return httpx.Response(200, json={"tasks": first_page})
+        return httpx.Response(200, json={"tasks": [{"id": "100", "name": "Task 100"}]})
+
+    mock_http(handler)
+    tasks = await clickup.fetch_clickup_tasks("team1:tok")
+    assert len(tasks) == 101
+    assert tasks[-1].name == "Task 100"
 
 
 @pytest.mark.asyncio
@@ -553,6 +680,36 @@ async def test_jira_sync_creates_placeable_intents(
     assert synced.json()["issues"] == 1
     plan = (await client.get("/api/plan")).json()
     assert [b for b in plan["blocks"] if "Fix it" in b["title"]]
+
+
+@pytest.mark.asyncio
+async def test_jira_sync_follows_pagination(mock_http: Callable[..., None]) -> None:
+    """`total` says more issues exist past this page — startAt must advance
+    to fetch them, not stop at the first response. Regression test."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        start_at = int(request.url.params["startAt"])
+        if start_at == 0:
+            return httpx.Response(
+                200,
+                json={
+                    "startAt": 0,
+                    "total": 2,
+                    "issues": [{"id": "1", "key": "ENG-1", "fields": {"summary": "First"}}],
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "startAt": 1,
+                "total": 2,
+                "issues": [{"id": "2", "key": "ENG-2", "fields": {"summary": "Second"}}],
+            },
+        )
+
+    mock_http(handler)
+    issues = await jira.fetch_jira_issues("site:me@example.com:tok")
+    assert [i.summary for i in issues] == ["First", "Second"]
 
 
 @pytest.mark.asyncio
