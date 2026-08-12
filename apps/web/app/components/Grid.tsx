@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Glyph, KIND_LABEL } from "@/app/components/Glyph";
 import type { Block, Busy, Priority } from "@/app/lib/api";
-import { formatDuration, minutesBetween } from "@/app/lib/api";
+import { PRIORITY_NAME, PRIORITY_TINT, formatDuration, minutesBetween } from "@/app/lib/api";
 import { Clock, Calendar, MoveRight } from "lucide-react";
 
 const DAY_START_H = 7;
@@ -11,26 +11,21 @@ const DAY_END_H = 21;
 const PX_PER_HOUR = 60;
 const HEIGHT = (DAY_END_H - DAY_START_H) * PX_PER_HOUR;
 
-const RULE: Record<Priority, string> = {
-  1: "#4F46E5",
-  2: "#6366F1",
-  3: "#818CF8",
-  4: "#A5B4FC",
-};
+/** `PRIORITY_TINT` doubles as the block's border-left rule (and its Glyph's
+ *  color) — it's already four accent weights, exactly what a rule needs. */
+const RULE = PRIORITY_TINT;
 
+/** A much lighter wash of the same accent for the block's background fill —
+ *  same four-step curve as `PRIORITY_TINT`/`RULE`, just far more
+ *  translucent so the title text stays readable over it. */
 const FILL: Record<Priority, string> = {
-  1: "rgba(99, 102, 241, 0.12)",
-  2: "rgba(99, 102, 241, 0.08)",
-  3: "rgba(99, 102, 241, 0.05)",
-  4: "rgba(99, 102, 241, 0.03)",
+  1: "color-mix(in srgb, var(--color-accent) 12%, transparent)",
+  2: "color-mix(in srgb, var(--color-accent) 8%, transparent)",
+  3: "color-mix(in srgb, var(--color-accent) 5%, transparent)",
+  4: "color-mix(in srgb, var(--color-accent) 3%, transparent)",
 };
 
-const PRIORITY_LABEL: Record<Priority, string> = {
-  1: "Critical",
-  2: "High",
-  3: "Normal",
-  4: "Low",
-};
+const PRIORITY_LABEL = PRIORITY_NAME;
 
 function dayKey(iso: string): string {
   return iso.slice(0, 10);
@@ -208,8 +203,8 @@ export function Grid({ days, blocks, busy, selected, onSelect }: GridProps) {
                           background: FILL[block.priority],
                           borderLeft: `3px ${moved ? "dashed" : "solid"} ${RULE[block.priority]}`,
                         }}
-                        className={`group absolute inset-x-1.5 z-10 cursor-pointer overflow-hidden rounded-block border border-indigo-200/50 px-2.5 py-1 text-left transition-all duration-200 ease-spring hover:scale-[1.01] hover:shadow-md ${
-                          isSelected ? "shadow-md ring-2 ring-secondary0" : "shadow-xs"
+                        className={`group absolute inset-x-1.5 z-10 cursor-pointer overflow-hidden rounded-block border border-black/[0.08] px-2.5 py-1 text-left transition-all duration-200 ease-spring hover:scale-[1.01] hover:shadow-md ${
+                          isSelected ? "shadow-md ring-2 ring-accent/40" : "shadow-xs"
                         } ${moved ? "settle" : ""}`}
                       >
                         <div className="flex items-center justify-between gap-1.5">
@@ -265,4 +260,4 @@ export function Grid({ days, blocks, busy, selected, onSelect }: GridProps) {
   );
 }
 
-export { PRIORITY_LABEL, RULE };
+export { PRIORITY_LABEL, RULE, FILL };

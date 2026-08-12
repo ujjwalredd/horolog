@@ -44,14 +44,14 @@ const appHref = LANDING_ONLY ? GITHUB_URL : "/login"
 
 export default function Landing() {
   return (
-    <div className="bg-background text-foreground min-h-screen">
+    <div id="main" className="bg-background text-foreground min-h-screen">
       <Navbar signInHref={appHref} />
 
       <Hero05
         tagline="The Engine of Time"
         title="Defend your deep work."
-        description="Horolog is a premier, self-hosted AI calendar engine. It treats tasks, habits, and focus time as fluid primitives-weaving them beautifully around your hard commitments."
-        landscapeImage="https://images.unsplash.com/photo-1475924156734-496f6cac6ec1?q=80&w=1144&auto=format&fit=crop"
+        description="Horolog is a premier, self-hosted AI calendar engine. It treats tasks, habits, and focus time as fluid primitives — weaving them beautifully around your hard commitments."
+        landscapeImage="/hero-landscape.jpg"
         landscapeAlt="Calm nature landscape representing peace of mind"
         animation="subtle"
         primaryCTA={{
@@ -101,8 +101,15 @@ export default function Landing() {
             label: "GitHub",
           },
         ]}
-        mainLinks={[]}
-        legalLinks={[]}
+        mainLinks={[
+          { label: "Documentation", href: `${GITHUB_URL}#readme` },
+          { label: "Changelog", href: `${GITHUB_URL}/blob/main/CHANGELOG.md` },
+          { label: "Contributing", href: `${GITHUB_URL}/blob/main/CONTRIBUTING.md` },
+        ]}
+        legalLinks={[
+          { label: "AGPL-3.0 License", href: `${GITHUB_URL}/blob/main/LICENSE` },
+          { label: "Security Policy", href: `${GITHUB_URL}/blob/main/SECURITY.md` },
+        ]}
         copyright={{
           text: "© 2026 Horolog Contributors.",
           license: "Released under AGPL-3.0 License",

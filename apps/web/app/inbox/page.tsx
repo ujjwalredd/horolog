@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Glyph, KIND_LABEL } from "@/app/components/Glyph";
 import { Shell } from "@/app/components/Shell";
+import { Skeleton } from "@/app/components/Skeleton";
 import {
   PRIORITY_NAME,
   PRIORITY_TINT,
@@ -165,6 +166,24 @@ export default function Inbox() {
               Press <kbd className="tabular rounded-md border border-black/5 bg-sunk px-2 py-0.5 text-[11.5px] font-mono">⌘K</kbd> and describe what you need time for - &quot;write the Q3 doc, 3 hours by Friday&quot;.
             </p>
           </div>
+        )}
+
+        {!plan && !error && (
+          <ul aria-hidden className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <li key={i} className="rounded-card border border-black/[0.06] bg-surface p-4.5 shadow-sm">
+                <div className="flex items-start gap-4">
+                  <Skeleton className="mt-1 h-10 w-1 shrink-0 rounded-full" />
+                  <Skeleton className="mt-1 h-[18px] w-[18px] shrink-0 rounded-full" />
+                  <div className="min-w-0 flex-1 space-y-2.5">
+                    <Skeleton className="h-4 w-2/5" />
+                    <Skeleton className="h-3 w-3/5" />
+                    <Skeleton className="h-1.5 w-full rounded-full" />
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
 
         <ul className="space-y-3">

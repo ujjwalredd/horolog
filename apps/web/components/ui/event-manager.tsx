@@ -26,6 +26,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Glyph } from "@/app/components/Glyph"
+import { FILL, RULE } from "@/app/components/Grid"
+import type { IntentKind, Priority } from "@/app/lib/api"
 
 export interface Event {
   id: string
@@ -37,6 +40,13 @@ export interface Event {
   category?: string
   attendees?: string[]
   tags?: string[]
+  /** When set, the card renders the same Glyph + accent-tint left-rule
+   *  system every other view (Grid, Inbox, Analytics) uses for priority and
+   *  kind, instead of the generic named `color`. Left unset for an event
+   *  with no priority of its own (a real, external, immovable meeting) —
+   *  see `busyToEvents` in `app/planner/page.tsx`. */
+  priority?: Priority
+  kind?: IntentKind
 }
 
 export interface EventManagerProps {
@@ -944,6 +954,20 @@ function EventCard({
   const [isHovered, setIsHovered] = useState(false)
   const colorClasses = getColorClasses(event.color)
 
+  // A block with a priority renders the same Glyph + accent-tint left-rule
+  // system Grid.tsx (the /time page) uses, instead of the generic named
+  // `color` — one source of truth for what priority/kind look like,
+  // wherever a block is drawn. An event with no priority (a real, external,
+  // immovable meeting) keeps the plain `colorClasses` treatment.
+  const priority = event.priority
+  const moved = event.tags?.includes("Moved") ?? false
+  const ruleColor = priority ? RULE[priority] : undefined
+  const priorityStyle: React.CSSProperties | undefined = priority
+    ? { backgroundColor: FILL[priority], borderLeft: `3px ${moved ? "dashed" : "solid"} ${RULE[priority]}` }
+    : undefined
+  const bgClass = priority ? undefined : colorClasses.bg
+  const textClass = priority ? "text-fg" : "text-white"
+
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString("en-US", {
       hour: "2-digit",
@@ -961,6 +985,20 @@ function EventCard({
     return `${minutes}m`
   }
 
+  const dot = (size: "h-3 w-3" | "h-4 w-4") => (
+    <div
+      className={cn(size, "flex-shrink-0 rounded-full", !priority && colorClasses.bg)}
+      style={priority ? { background: ruleColor } : undefined}
+    />
+  )
+
+  const kindGlyph = (size: number) =>
+    event.kind && (
+      <span className="shrink-0" style={{ color: ruleColor }} aria-hidden>
+        <Glyph kind={event.kind} size={size} />
+      </span>
+    )
+
   if (variant === "compact") {
     return (
       <div
@@ -973,14 +1011,17 @@ function EventCard({
         className="relative cursor-pointer"
       >
         <div
+          style={priorityStyle}
           className={cn(
-            "rounded px-1.5 py-0.5 text-xs font-medium transition-all duration-300",
-            colorClasses.bg,
-            "text-white truncate animate-in fade-in slide-in-from-top-1",
+            "flex items-center gap-1 truncate rounded px-1.5 py-0.5 text-xs font-medium transition-all duration-300",
+            bgClass,
+            textClass,
+            "animate-in fade-in slide-in-from-top-1",
             isHovered && "scale-105 shadow-lg z-10",
           )}
         >
-          {event.title}
+          {kindGlyph(10)}
+          <span className="truncate">{event.title}</span>
         </div>
         {isHovered && (
           <div className="absolute left-0 top-full z-50 mt-1 w-64 animate-in fade-in slide-in-from-top-2 duration-200">
@@ -988,7 +1029,7 @@ function EventCard({
               <div className="space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <h4 className="font-semibold text-sm leading-tight text-fg">{event.title}</h4>
-                  <div className={cn("h-3 w-3 rounded-full flex-shrink-0", colorClasses.bg)} />
+                  {dot("h-3 w-3")}
                 </div>
                 {event.description && <p className="text-xs text-muted-foreground line-clamp-2">{event.description}</p>}
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -1027,16 +1068,25 @@ function EventCard({
         onClick={() => onEventClick(event)}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
+        style={priorityStyle}
         className={cn(
           "cursor-pointer rounded-lg p-3 transition-all duration-300",
-          colorClasses.bg,
-          "text-white animate-in fade-in slide-in-from-left-2",
-          isHovered && "scale-[1.03] shadow-2xl ring-2 ring-white/50",
+          bgClass,
+          textClass,
+          "animate-in fade-in slide-in-from-left-2",
+          isHovered && "scale-[1.03] shadow-2xl ring-2 ring-black/10",
         )}
       >
-        <div className="font-semibold">{event.title}</div>
-        {event.description && <div className="mt-1 text-sm opacity-90 line-clamp-2">{event.description}</div>}
-        <div className="mt-2 flex items-center gap-2 text-xs opacity-80">
+        <div className="flex items-center gap-1.5 font-semibold">
+          {kindGlyph(14)}
+          {event.title}
+        </div>
+        {event.description && (
+          <div className={cn("mt-1 text-sm line-clamp-2", priority ? "text-fg-muted" : "opacity-90")}>
+            {event.description}
+          </div>
+        )}
+        <div className={cn("mt-2 flex items-center gap-2 text-xs", priority ? "text-fg-muted" : "opacity-80")}>
           <Clock className="h-3 w-3" />
           {formatTime(event.startTime)} - {formatTime(event.endTime)}
         </div>
@@ -1069,13 +1119,16 @@ function EventCard({
       className="relative"
     >
       <div
+        style={priorityStyle}
         className={cn(
-          "cursor-pointer rounded px-2 py-1 text-xs font-medium transition-all duration-300",
-          colorClasses.bg,
-          "text-white animate-in fade-in slide-in-from-left-1",
+          "flex items-center gap-1.5 cursor-pointer rounded px-2 py-1 text-xs font-medium transition-all duration-300",
+          bgClass,
+          textClass,
+          "animate-in fade-in slide-in-from-left-1",
           isHovered && "scale-105 shadow-lg z-10",
         )}
       >
+        {kindGlyph(12)}
         <div className="truncate">{event.title}</div>
       </div>
       {isHovered && (
@@ -1084,7 +1137,7 @@ function EventCard({
             <div className="space-y-3">
               <div className="flex items-start justify-between gap-2">
                 <h4 className="font-semibold leading-tight text-fg">{event.title}</h4>
-                <div className={cn("h-4 w-4 rounded-full flex-shrink-0", colorClasses.bg)} />
+                {dot("h-4 w-4")}
               </div>
               {event.description && <p className="text-sm text-muted-foreground">{event.description}</p>}
               <div className="space-y-1.5">
@@ -1425,6 +1478,7 @@ function ListView({
             <div className="space-y-2">
               {dateEvents.map((event) => {
                 const colorClasses = getColorClasses(event.color)
+                const ruleColor = event.priority ? RULE[event.priority] : undefined
                 return (
                   <div
                     key={event.id}
@@ -1432,12 +1486,20 @@ function ListView({
                     className="group cursor-pointer rounded-lg border bg-card p-3 transition-all hover:shadow-md hover:scale-[1.01] animate-in fade-in slide-in-from-bottom-2 duration-300 sm:p-4"
                   >
                     <div className="flex items-start gap-2 sm:gap-3">
-                      <div className={cn("mt-1 h-2.5 w-2.5 rounded-full sm:h-3 sm:w-3", colorClasses.bg)} />
+                      <div
+                        className={cn("mt-1 h-2.5 w-2.5 shrink-0 rounded-full sm:h-3 sm:w-3", !event.priority && colorClasses.bg)}
+                        style={event.priority ? { background: ruleColor } : undefined}
+                      />
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                           <div className="min-w-0">
-                            <h4 className="font-semibold text-sm group-hover:text-primary transition-colors sm:text-base truncate">
-                              {event.title}
+                            <h4 className="flex items-center gap-1.5 font-semibold text-sm group-hover:text-primary transition-colors sm:text-base">
+                              {event.kind && (
+                                <span className="shrink-0" style={{ color: ruleColor }} aria-hidden>
+                                  <Glyph kind={event.kind} size={13} />
+                                </span>
+                              )}
+                              <span className="truncate">{event.title}</span>
                             </h4>
                             {event.description && (
                               <p className="mt-1 text-xs text-muted-foreground sm:text-sm line-clamp-2">

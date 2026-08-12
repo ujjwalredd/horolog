@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Shell } from "@/app/components/Shell";
+import { Skeleton } from "@/app/components/Skeleton";
 import { analytics, formatDuration, type Analytics } from "@/app/lib/api";
 import { Clock } from "lucide-react";
 
@@ -233,16 +234,18 @@ function AnalyticsSkeleton() {
       <section className="mb-7 grid gap-px overflow-hidden rounded-card border border-black/[0.08] bg-line sm:grid-cols-2 lg:grid-cols-4 shadow-sm">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="space-y-2.5 bg-surface p-5">
-            <div className="h-7 w-16 animate-pulse rounded-md bg-sunk" />
-            <div className="h-4 w-24 animate-pulse rounded-md bg-sunk" />
-            <div className="h-3 w-28 animate-pulse rounded-md bg-sunk" />
+            <Skeleton className="h-7 w-16" />
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-3 w-28" />
           </div>
         ))}
       </section>
-      <section className="mb-7 h-[268px] animate-pulse rounded-card border border-black/[0.08] bg-surface shadow-sm" />
+      <section className="mb-7 h-[268px] rounded-card border border-black/[0.08] bg-surface shadow-sm">
+        <Skeleton className="h-full w-full rounded-card" />
+      </section>
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="h-[220px] animate-pulse rounded-card border border-black/[0.08] bg-surface shadow-sm" />
-        <div className="h-[220px] animate-pulse rounded-card border border-black/[0.08] bg-surface shadow-sm" />
+        <Skeleton className="h-[220px] rounded-card border border-black/[0.08] shadow-sm" />
+        <Skeleton className="h-[220px] rounded-card border border-black/[0.08] shadow-sm" />
       </div>
     </div>
   );

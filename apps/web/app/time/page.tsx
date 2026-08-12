@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Grid } from "@/app/components/Grid";
 import { Glyph, KIND_LABEL } from "@/app/components/Glyph";
 import { Shell } from "@/app/components/Shell";
+import { Skeleton } from "@/app/components/Skeleton";
 import { api, formatDuration, minutesBetween, type IntentKind, type Plan } from "@/app/lib/api";
 import { ArrowRight } from "lucide-react";
 
@@ -76,13 +77,15 @@ export default function TimePage() {
           <StatusCard
             label="Right now"
             block={current}
-            empty={plan ? "Nothing scheduled — this time is open." : "Reading the plan..."}
+            empty="Nothing scheduled — this time is open."
+            loading={!plan}
           />
           <StatusCard
             label="Up next"
             block={next}
-            empty={plan ? "Nothing else scheduled for today." : "Reading the plan..."}
+            empty="Nothing else scheduled for today."
             untilNow={now}
+            loading={!plan}
           />
         </div>
 
@@ -103,16 +106,26 @@ function StatusCard({
   block,
   empty,
   untilNow,
+  loading = false,
 }: {
   label: string;
   block: { title: string; kind: IntentKind; priority: number; start: string; end: string } | undefined;
   empty: string;
   untilNow?: Date;
+  loading?: boolean;
 }) {
   return (
     <div className="rounded-card border border-black/[0.08] bg-surface p-5 shadow-sm">
       <div className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">{label}</div>
-      {block ? (
+      {loading ? (
+        <div aria-hidden className="mt-2 flex items-center gap-2.5">
+          <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Skeleton className="h-4 w-2/5" />
+            <Skeleton className="h-3 w-3/5" />
+          </div>
+        </div>
+      ) : block ? (
         <div className="mt-2 flex items-center gap-2.5">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sunk text-fg">
             <Glyph kind={block.kind} size={15} />

@@ -15,23 +15,32 @@ import {
   Link2,
 } from "lucide-react";
 
-/** Map backend priority number to EventManager color values */
+/** Map backend priority number to EventManager color-filter values.
+ *  Rendering itself no longer reads these — `EventCard`/`ListView` in
+ *  `event-manager.tsx` read `Event.priority` directly and paint it with
+ *  `PRIORITY_TINT`/`RULE`/`FILL`, the same accent system every other view
+ *  uses. `color` only still drives the toolbar's "filter by color" chips
+ *  and the manual create-event dialog's swatch picker, so it still needs a
+ *  distinct, named value per priority. */
 const PRIORITY_COLOR: Record<number, string> = {
-  1: "blue",
-  2: "purple",
-  3: "green",
-  4: "orange",
+  1: "p1",
+  2: "p2",
+  3: "p3",
+  4: "p4",
 };
 
-/** The default palette plus one extra: real external events are locked and
- *  need a colour no priority uses, so they read as visually distinct at a
- *  glance rather than as a fifth "normal" block. */
+/** Stone, the same neutral hue `--color-accent` is drawn from, at
+ *  descending weights — so even the secondary filter/picker UI reads as
+ *  the same one-hue system instead of introducing its own palette. One
+ *  extra entry for real external events, which have no priority of their
+ *  own and need to read as visually distinct rather than a fifth "normal"
+ *  block. */
 const COLORS = [
-  { name: "Blue", value: "blue", bg: "bg-blue-500", text: "text-blue-700" },
-  { name: "Green", value: "green", bg: "bg-green-500", text: "text-green-700" },
-  { name: "Purple", value: "purple", bg: "bg-purple-500", text: "text-purple-700" },
-  { name: "Orange", value: "orange", bg: "bg-orange-500", text: "text-orange-700" },
-  { name: "Slate", value: "slate", bg: "bg-slate-500", text: "text-slate-700" },
+  { name: "Critical", value: "p1", bg: "bg-stone-800", text: "text-stone-800" },
+  { name: "High", value: "p2", bg: "bg-stone-600", text: "text-stone-700" },
+  { name: "Normal", value: "p3", bg: "bg-stone-400", text: "text-stone-600" },
+  { name: "Low", value: "p4", bg: "bg-stone-300", text: "text-stone-500" },
+  { name: "External", value: "slate", bg: "bg-slate-400", text: "text-slate-700" },
 ];
 
 const EXTERNAL_PREFIX = "external-";
@@ -60,8 +69,10 @@ function blocksToEvents(blocks: Block[]): Event[] {
       description: `${KIND_LABEL[block.kind]} · Chunk ${block.chunk} · ${formatDuration(minutesBetween(block.start, block.end))}`,
       startTime: new Date(block.start),
       endTime: new Date(block.end),
-      color: PRIORITY_COLOR[block.priority] || "green",
+      color: PRIORITY_COLOR[block.priority] || "p3",
       category: kindToCategory(block.kind),
+      priority: block.priority,
+      kind: block.kind,
       tags,
     };
   });

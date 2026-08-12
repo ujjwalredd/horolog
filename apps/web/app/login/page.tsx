@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Hexagon } from "lucide-react";
 import { Wave } from "@/app/components/Wave";
 import { Button } from "@/components/ui/button";
 
@@ -16,7 +17,7 @@ export default function Login() {
   }
 
   return (
-    <main className="relative isolate flex min-h-screen items-center justify-center px-6 py-16 bg-background">
+    <main id="main" className="relative isolate flex min-h-screen items-center justify-center px-6 py-16 bg-background">
       <div className="pointer-events-none absolute inset-x-0 -top-24 -z-10 h-[560px] opacity-45">
         <Wave />
       </div>
@@ -24,16 +25,7 @@ export default function Login() {
 
       <div className="w-full max-w-[400px]">
         <Link href="/" className="mb-8 flex items-center justify-center gap-2.5 hover:opacity-80 transition-opacity text-primary">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <circle cx="12" cy="12" r="9.25" stroke="currentColor" strokeWidth="1.5" />
-            <path
-              d="M12 6.75V12l3.4 2.1"
-              stroke="currentColor"
-              strokeWidth="1.9"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <Hexagon className="h-6 w-6" aria-hidden />
           <span className="text-[17px] font-semibold tracking-tight">Horolog</span>
         </Link>
 

@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Glyph } from "@/app/components/Glyph";
+import { PriorityPicker } from "@/app/components/PriorityPicker";
 import { Shell } from "@/app/components/Shell";
+import { Skeleton } from "@/app/components/Skeleton";
 import {
-  PRIORITY_NAME,
   PRIORITY_TINT,
   api,
   createIntent,
@@ -197,22 +198,7 @@ export default function Meetings() {
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-4 border-t border-black/[0.06] bg-sunk/40 px-6 py-3.5">
-            <div className="flex items-center gap-1.5">
-              {([1, 2, 3, 4] as const).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPriority(p)}
-                  aria-pressed={priority === p}
-                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-all duration-150 ${
-                    priority === p ? "bg-surface shadow-sm border border-black/[0.08]" : "text-fg-muted hover:bg-surface/60"
-                  }`}
-                >
-                  <span className="h-3 w-1 rounded-full" style={{ background: PRIORITY_TINT[p] }} aria-hidden />
-                  {PRIORITY_NAME[p]}
-                </button>
-              ))}
-            </div>
+            <PriorityPicker value={priority} onChange={setPriority} />
             <button
               type="submit"
               disabled={!title.trim() || saving}
@@ -229,9 +215,21 @@ export default function Meetings() {
         </h2>
 
         {!loaded ? (
-          <div className="rounded-card border border-black/[0.06] bg-surface p-10 text-center shadow-sm">
-            <p className="text-[13.5px] text-fg-muted">Reading the plan...</p>
-          </div>
+          <ul aria-hidden className="space-y-3">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <li
+                key={i}
+                className="flex items-center gap-4 rounded-card border border-black/[0.06] bg-surface p-4.5 shadow-sm"
+              >
+                <Skeleton className="h-10 w-1 shrink-0 rounded-full" />
+                <Skeleton className="h-[18px] w-[18px] shrink-0 rounded-full" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Skeleton className="h-4 w-1/3" />
+                  <Skeleton className="h-3 w-1/2" />
+                </div>
+              </li>
+            ))}
+          </ul>
         ) : meetings.length === 0 ? (
           <div className="rounded-card border border-black/[0.06] bg-surface p-10 text-center shadow-sm">
             <p className="text-[14px] font-semibold text-fg">No smart meetings yet</p>

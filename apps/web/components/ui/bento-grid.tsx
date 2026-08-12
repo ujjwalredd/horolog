@@ -4,7 +4,7 @@ import * as React from "react"
 import { motion, type Variants } from "motion/react"
 import { cn } from "@/lib/utils"
 import Balancer from "react-wrap-balancer"
-import { Brain, Cpu, CalendarSync, Clock, Link, GitPullRequest } from "lucide-react"
+import { Brain, Cpu, UploadCloud, Link, GitPullRequest } from "lucide-react"
 
 const container: Variants = {
   hidden: {},
@@ -79,11 +79,11 @@ export function BentoGrid() {
             {/* Bento Box 4 */}
             <motion.div variants={item} className="group flex flex-col p-8 rounded-3xl bg-background shadow-sm hover:shadow-md border border-primary/5 transition-shadow duration-300">
               <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/5 transition-colors duration-500 group-hover:bg-primary/10">
-                <Clock className="text-primary" size={24} strokeWidth={1.5} />
+                <UploadCloud className="text-primary" size={24} strokeWidth={1.5} />
               </div>
-              <h3 className="font-serif text-[22px] text-foreground mb-3">Decompression Buffers</h3>
+              <h3 className="font-serif text-[22px] text-foreground mb-3">Real Calendar Write-Back</h3>
               <p className="text-[15px] leading-[1.6] text-muted-foreground font-light">
-                Auto-inject 15m buffer blocks after 30m+ meetings to avoid back-to-back burnout.
+                Push scheduled blocks onto a dedicated calendar on Google or Outlook as real events — colleagues see them, and can&apos;t double-book over them.
               </p>
             </motion.div>
 

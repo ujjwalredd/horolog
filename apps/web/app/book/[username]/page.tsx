@@ -75,7 +75,7 @@ export default function BookingPage({ params }: { params: Promise<{ username: st
 
   if (confirmed) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
+      <main id="main" className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
         <div className="w-full max-w-md rounded-xl border border-border bg-secondary/20 p-8 text-center">
           <div className="mx-auto mb-5 flex h-11 w-11 items-center justify-center rounded-full border border-border">
             <Check className="h-5 w-5" aria-hidden />

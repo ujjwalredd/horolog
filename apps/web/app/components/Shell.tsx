@@ -193,7 +193,7 @@ export function Shell({
         })}
       </div>
 
-      <main className="flex-1 pb-20 lg:pb-0">{children}</main>
+      <main id="main" className="flex-1 pb-20 lg:pb-0">{children}</main>
       <CommandBar 
         open={commandOpen} 
         onClose={() => setCommandOpen(false)} 
