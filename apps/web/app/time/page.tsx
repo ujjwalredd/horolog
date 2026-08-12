@@ -39,18 +39,24 @@ export default function TimePage() {
     return () => clearInterval(id);
   }, []);
 
-  const today = useMemo(() => new Date(), []);
-  const todayKey = today.toISOString().slice(0, 10);
+  // `now` (not a frozen mount-time snapshot) so the day key rolls over if the
+  // tab is left open past midnight instead of filtering forever for a stale day.
+  const todayKey = now.toISOString().slice(0, 10);
 
   const todaysBlocks = useMemo(
     () => (plan ? plan.blocks.filter((b) => dayKey(b.start) === todayKey) : []),
     [plan, todayKey],
   );
 
-  const current = todaysBlocks.find((b) => b.start <= now.toISOString() && now.toISOString() < b.end);
+  // Blocks come back with the server's local UTC offset (e.g. `-05:00`), not
+  // necessarily `Z` — comparing those strings against now.toISOString()
+  // (always `Z`) lexicographically does not agree with chronological order.
+  // Parse both sides to epoch ms instead.
+  const nowMs = now.getTime();
+  const current = todaysBlocks.find((b) => Date.parse(b.start) <= nowMs && nowMs < Date.parse(b.end));
   const next = todaysBlocks
-    .filter((b) => b.start > now.toISOString())
-    .sort((a, b) => a.start.localeCompare(b.start))[0];
+    .filter((b) => Date.parse(b.start) > nowMs)
+    .sort((a, b) => Date.parse(a.start) - Date.parse(b.start))[0];
 
   return (
     <Shell onPlanChange={load}>
@@ -59,7 +65,7 @@ export default function TimePage() {
           <div>
             <h1 className="text-[28px] font-bold text-fg">Time</h1>
             <p className="mt-1 text-[13.5px] text-fg-muted">
-              {today.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}
+              {now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}
             </p>
           </div>
           <div className="tabular text-[32px] font-semibold leading-none text-fg">
@@ -90,7 +96,7 @@ export default function TimePage() {
         </div>
 
         <Grid
-          days={[today]}
+          days={[now]}
           blocks={plan?.blocks ?? []}
           busy={plan?.busy ?? []}
           selected={selected}

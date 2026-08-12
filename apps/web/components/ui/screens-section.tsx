@@ -3,6 +3,14 @@
 import * as React from "react"
 import { motion, type Variants } from "motion/react"
 import Balancer from "react-wrap-balancer"
+import { Expand } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
 const container: Variants = {
   hidden: {},
@@ -19,7 +27,19 @@ const item: Variants = {
   },
 }
 
-const SCREENS = [
+interface Screen {
+  file: string
+  name: string
+  description: string
+}
+
+const PLANNER: Screen = {
+  file: "planner",
+  name: "Planner",
+  description: "Month, week, day or list. Priority by accent weight, kind by glyph, movability by rule style. Live over SSE.",
+}
+
+const SCREENS: Screen[] = [
   {
     file: "inbox",
     name: "Task inbox",
@@ -52,6 +72,64 @@ const SCREENS = [
   },
 ]
 
+function ScreenCard({ screen, featured = false }: { screen: Screen; featured?: boolean }) {
+  return (
+    <Dialog>
+      <motion.figure
+        variants={item}
+        className={`group overflow-hidden rounded-2xl border border-primary/10 bg-sunk/40 shadow-sm transition-shadow duration-300 hover:shadow-md ${featured ? "rounded-3xl" : ""}`}
+      >
+        <DialogTrigger asChild>
+          <button
+            type="button"
+            aria-label={`View ${screen.name} screenshot full size`}
+            className="relative block w-full cursor-zoom-in text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+          >
+            <img
+              src={`/screenshots/${screen.file}.png`}
+              alt={`Horolog ${screen.name.toLowerCase()} view`}
+              loading="lazy"
+              decoding="async"
+              width={1440}
+              height={900}
+              className="aspect-[8/5] w-full object-cover object-top transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+            />
+            <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-300 group-hover:bg-black/10 group-hover:opacity-100">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-background/90 px-3 py-1.5 text-[12px] font-medium text-foreground shadow-sm backdrop-blur-sm">
+                <Expand size={13} strokeWidth={2} />
+                View full size
+              </span>
+            </span>
+          </button>
+        </DialogTrigger>
+        <figcaption className={featured ? "p-6" : "p-5"}>
+          <span className={featured ? "text-[16px] font-semibold text-foreground" : "text-[15px] font-semibold text-foreground"}>
+            {screen.name}
+          </span>
+          <p className={featured ? "mt-1 inline text-[14px] text-muted-foreground font-light" : "mt-1 text-[13px] leading-[1.6] text-muted-foreground font-light"}>
+            {featured ? ` ${screen.description}` : screen.description}
+          </p>
+        </figcaption>
+      </motion.figure>
+
+      <DialogContent className="max-w-4xl gap-3 overflow-hidden border-primary/10 bg-background p-0 sm:rounded-2xl">
+        <div className="p-6 pb-0">
+          <DialogTitle className="font-serif text-xl font-normal text-foreground">{screen.name}</DialogTitle>
+          <DialogDescription className="mt-1 text-[14px]">{screen.description}</DialogDescription>
+        </div>
+        <img
+          src={`/screenshots/${screen.file}.png`}
+          alt={`Horolog ${screen.name.toLowerCase()} view, full size`}
+          decoding="async"
+          width={1440}
+          height={900}
+          className="w-full"
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function ScreensSection() {
   return (
     <section className="relative py-32 bg-background overflow-hidden">
@@ -76,50 +154,13 @@ export function ScreensSection() {
             </p>
           </motion.div>
 
-          <motion.figure
-            variants={item}
-            className="mb-6 overflow-hidden rounded-3xl border border-primary/10 bg-sunk/40 shadow-sm"
-          >
-            <img
-              src="/screenshots/planner.png"
-              alt="Horolog planner: month, week, day and list views of a scheduled week"
-              loading="lazy"
-              decoding="async"
-              width={1440}
-              height={900}
-              className="aspect-[8/5] w-full object-cover object-top"
-            />
-            <figcaption className="p-6">
-              <span className="text-[16px] font-semibold text-foreground">Planner</span>
-              <span className="ml-2 text-[14px] text-muted-foreground font-light">
-                Month, week, day or list. Priority by accent weight, kind by glyph, movability by rule style. Live over SSE.
-              </span>
-            </figcaption>
-          </motion.figure>
+          <div className="mb-6">
+            <ScreenCard screen={PLANNER} featured />
+          </div>
 
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {SCREENS.map((screen) => (
-              <motion.figure
-                key={screen.file}
-                variants={item}
-                className="overflow-hidden rounded-2xl border border-primary/10 bg-sunk/40 shadow-sm"
-              >
-                <img
-                  src={`/screenshots/${screen.file}.png`}
-                  alt={`Horolog ${screen.name.toLowerCase()} view`}
-                  loading="lazy"
-                  decoding="async"
-                  width={1440}
-                  height={900}
-                  className="aspect-[8/5] w-full object-cover object-top"
-                />
-                <figcaption className="p-5">
-                  <div className="text-[15px] font-semibold text-foreground">{screen.name}</div>
-                  <p className="mt-1 text-[13px] leading-[1.6] text-muted-foreground font-light">
-                    {screen.description}
-                  </p>
-                </figcaption>
-              </motion.figure>
+              <ScreenCard key={screen.file} screen={screen} />
             ))}
           </div>
         </motion.div>
