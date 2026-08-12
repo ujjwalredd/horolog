@@ -5,8 +5,9 @@ from __future__ import annotations
 import os
 import tempfile
 import typing
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from datetime import datetime, timedelta
+from typing import cast
 
 import httpx
 import pytest
@@ -16,9 +17,11 @@ _tmpdir = tempfile.mkdtemp()
 os.environ["HOROLOG_DATABASE_URL"] = f"sqlite+aiosqlite:///{_tmpdir}/test.db"
 
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import delete
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from horolog.api import app, origin
-from horolog.db import init_db
+from horolog.db import BusyRow, init_db, session
 
 
 @pytest_asyncio.fixture
@@ -30,6 +33,19 @@ async def client() -> AsyncIterator[AsyncClient]:
             for item in (await http.get(path)).json():
                 await http.delete(f"/api/intents/{item['id']}")
         await http.put("/api/busy", json=[])
+        # `PUT /api/busy` with an empty body only clears the "manual"
+        # source by design (each sync source is its own independent
+        # mirror) — but `db.py`'s `_engine`/`settings` are process-wide
+        # `@lru_cache`s, so when the full suite runs in one pytest process,
+        # whichever test file's database is touched first is what every
+        # other file's tests actually hit. A "booking"-sourced busy row
+        # left behind by test_integrations.py's booking tests can land
+        # here too, so every source needs clearing, not just "manual".
+        gen = cast("AsyncGenerator[AsyncSession, None]", session())
+        db = await anext(gen)
+        await db.execute(delete(BusyRow))
+        await db.commit()
+        await gen.aclose()
         yield http
 
 

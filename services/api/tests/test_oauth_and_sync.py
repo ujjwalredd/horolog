@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from horolog import oauth
 from horolog.api import _push_calendar, app
-from horolog.db import OAuthTokenRow, SyncedBlockRow, init_db, session
+from horolog.db import BusyRow, OAuthTokenRow, SyncedBlockRow, init_db, session
 from horolog.integrations import clickup, github, jira, notion, todoist
 from horolog.integrations.google_calendar import GoogleCalendarProvider
 from horolog.integrations.outlook_calendar import OutlookCalendarProvider
@@ -42,12 +42,20 @@ async def client() -> AsyncIterator[AsyncClient]:
         await http.put("/api/busy", json=[])
         for provider in oauth.PROVIDERS:
             await http.delete(f"/api/connections/{provider}")
-        # No HTTP route touches this table — it is push state, not something
-        # a user calls — so it needs its own cleanup or a synced_blocks row
-        # left behind by one test's fake calendar id colliding with the next
-        # test's silently corrupts the second test's diff.
+        # `PUT /api/busy` with an empty body only clears the "manual" source
+        # by design — each sync source is an independent mirror, so syncing
+        # one must never wipe another (see `replace_busy`'s own docstring).
+        # That's correct in production, but `db.py`'s `_engine`/`settings`
+        # are process-wide `@lru_cache`s: when the full suite runs in one
+        # pytest process, whichever test file's database happens to be
+        # touched first wins, and every other file's tests silently share
+        # that one file — so a "booking"-sourced busy row left behind by
+        # test_integrations.py's booking tests can land in this file's
+        # tests too. Same reasoning as the `synced_blocks` cleanup below:
+        # no HTTP route clears every source at once, so it needs its own.
         gen = cast("AsyncGenerator[AsyncSession, None]", session())
         db = await anext(gen)
+        await db.execute(delete(BusyRow))
         await db.execute(delete(SyncedBlockRow))
         await db.commit()
         await gen.aclose()
