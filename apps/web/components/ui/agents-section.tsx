@@ -32,41 +32,57 @@ const item: Variants = {
 const AGENTS = [
   {
     icon: Target,
+    codename: "Escapement",
+    module: "solver/greedy.py",
     name: "Smart Task Scheduler",
     description: "Deadline-aware tasks, split across sittings and placed around real meetings. Priority P1-P4 decides who wins a contested slot.",
   },
   {
     icon: RotateCcw,
+    codename: "Regulator",
+    module: "solver/expand.py",
     name: "Habit & Routine Manager",
     description: "‘Gym three times a week between 10 and 4.’ Recurrence, time-of-day windows, per-day caps, automatic relocation.",
   },
   {
     icon: CalendarSync,
+    codename: "Mainspring",
+    module: "providers.py",
     name: "Dynamic Calendar Sync",
     description: "ICS feeds, CalDAV servers, and real OAuth connections to Google Calendar and Outlook — recurring events expanded, free time ignored.",
   },
   {
     icon: Users,
+    codename: "Complication",
+    module: "solver/greedy.py",
     name: "Smart Meetings",
     description: "Multi-attendee scheduling that intersects everyone's availability — without letting a colleague's calendar block your own solo work.",
   },
   {
     icon: BarChart3,
+    codename: "Chronograph",
+    module: "analytics.py",
     name: "Productivity Analytics",
     description: "Deep-work hours, meeting load, fragmentation, longest free run per day, after-hours load, unmet demand — all measured, not guessed.",
   },
   {
     icon: Timer,
+    codename: "Power Reserve",
+    module: "solver/greedy.py",
     name: "Decompression Buffers",
     description: "Recovery time held after every substantial meeting, from any source. A run of back-to-back meetings gets one buffer, at the end.",
   },
   {
     icon: Link2,
+    codename: "Gnomon",
+    module: "api.py",
     name: "Booking Links",
     description: "A public /book/name page offering true free time — hours holding flexible work stay bookable, because taking the slot moves it.",
   },
   {
     icon: ListChecks,
+    codename: "Tourbillon",
+    module: "integrations/",
     name: "Tracker Integrations",
     description: "Linear, Todoist and GitHub issues pulled in as fluid tasks — via OAuth or a pasted personal key, scheduled around everything else.",
   },
@@ -105,8 +121,18 @@ export function AgentsSection() {
                 variants={item}
                 className="group flex flex-col rounded-2xl border border-primary/10 bg-sunk/40 p-6 transition-colors duration-300 hover:border-primary/20 hover:bg-sunk/70"
               >
-                <div className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/5 transition-colors duration-500 group-hover:bg-primary/10">
-                  <agent.icon className="text-primary" size={20} strokeWidth={1.5} />
+                <div className="mb-5 flex items-start justify-between gap-2">
+                  <div className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/5 transition-colors duration-500 group-hover:bg-primary/10">
+                    <agent.icon className="text-primary" size={20} strokeWidth={1.5} />
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-primary/70">
+                      {agent.codename}
+                    </div>
+                    <div className="mt-0.5 font-mono text-[10.5px] text-muted-foreground/70">
+                      {agent.module}
+                    </div>
+                  </div>
                 </div>
                 <h3 className="mb-2.5 text-[16px] font-semibold text-foreground">{agent.name}</h3>
                 <p className="text-[13.5px] leading-[1.6] text-muted-foreground font-light">
