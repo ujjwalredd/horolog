@@ -9,3 +9,8 @@ scraper-shaped traffic. Originally `https://unsplash.com/photos/xdWEK9jm5cQ`
 Downloaded at 1600px wide; re-run
 `curl -sL -A "Mozilla/5.0" "<unsplash-url>?q=80&w=1600&auto=format&fit=crop" -o hero-landscape.jpg`
 against a different photo to swap it.
+
+`screenshots/*.png` — real captures of the app (`npm run seed:demo`'s
+sample week), used by the landing page's "Screens" section. Copied from
+`docs/screenshots/`, which `README.md` also embeds directly — re-capture
+there and re-copy here if the UI changes enough to make them stale.

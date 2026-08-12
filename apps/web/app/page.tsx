@@ -4,6 +4,7 @@ import { CheckCircle2, Hexagon } from "lucide-react"
 import { Navbar } from "@/components/ui/navbar"
 import { Hero05 } from "@/components/ui/hero-05"
 import { AgentsSection } from "@/components/ui/agents-section"
+import { ScreensSection } from "@/components/ui/screens-section"
 import { BentoGrid } from "@/components/ui/bento-grid"
 import { TechnicalSection } from "@/components/ui/technical-section"
 import { WorkflowSection } from "@/components/ui/workflow-section"
@@ -54,6 +55,7 @@ export default function Landing() {
         landscapeImage="/hero-landscape.jpg"
         landscapeAlt="Calm nature landscape representing peace of mind"
         animation="subtle"
+        trustLine="AGPL-3.0 licensed · self-hosted · zero telemetry"
         primaryCTA={{
           ctaEnabled: true,
           text: LANDING_ONLY ? 'View on GitHub' : 'Enter the Planner',
@@ -80,6 +82,7 @@ export default function Landing() {
       </section>
 
       <WorkflowSection />
+      <ScreensSection />
       <AgentsSection />
       <TechnicalSection />
       <BentoGrid />

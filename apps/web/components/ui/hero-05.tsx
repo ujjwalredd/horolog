@@ -17,6 +17,7 @@ export interface Hero05Props {
   animation?: 'none' | 'subtle'
   primaryCTA?: CtaProps
   secondaryCTA?: CtaProps
+  trustLine?: string
   variant?: 'standard' | 'compact'
 }
 
@@ -93,6 +94,7 @@ export function Hero05({
   animation = 'none',
   primaryCTA,
   secondaryCTA,
+  trustLine,
   variant = 'standard',
 }: Readonly<Hero05Props>) {
   const reduce = useReducedMotion()
@@ -141,6 +143,10 @@ export function Hero05({
         />
       )}
     </div>
+  )
+
+  const trustLineElement = trustLine && (
+    <p className="text-muted-foreground/70 text-xs tracking-wide">{trustLine}</p>
   )
 
   const mediaElement = landscapeImage && (
@@ -195,6 +201,7 @@ export function Hero05({
           {titleElement}
           {descriptionElement}
           {ctasElement}
+          {trustLineElement}
         </Reveal>
       </motion.div>
 

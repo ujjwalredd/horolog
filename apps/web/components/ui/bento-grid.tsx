@@ -94,7 +94,7 @@ export function BentoGrid() {
               </div>
               <h3 className="font-serif text-[22px] text-foreground mb-3">Third-Party Task Sync</h3>
               <p className="text-[15px] leading-[1.6] text-muted-foreground font-light">
-                Sync Linear & Todoist tasks directly into Horolog. Issues automatically schedule as fluid tasks around your real-life calendar.
+                Sync Linear, Todoist & GitHub issues directly into Horolog. They automatically schedule as fluid tasks around your real-life calendar.
               </p>
             </motion.div>
           </div>
