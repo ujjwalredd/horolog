@@ -92,6 +92,7 @@ jobs:
         run: |
           cp .env.example .env
           echo "HOROLOG_LLM_MODEL=ci-canary-value" >> .env
+          echo "POSTGRES_PASSWORD=ci-canary-password" >> .env
           resolved=$(docker compose config)
           echo "$resolved" | grep -q "HOROLOG_LLM_MODEL: ci-canary-value" || {
             echo "::error::.env override was not applied — is docker-compose.yml still resolving .env from the right directory?"
