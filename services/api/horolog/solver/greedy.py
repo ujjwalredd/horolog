@@ -91,9 +91,14 @@ def chunk_sizes(required: int, min_chunk: int, max_chunk: int, limit: int) -> li
     remaining = required
     while remaining >= min_chunk and len(sizes) < limit:
         take = min(max_chunk, remaining)
-        # Never leave a stub too small to be placed as its own chunk.
-        if 0 < remaining - take < min_chunk:
-            take = remaining if remaining <= max_chunk else remaining - min_chunk
+        # Never leave a stub too small to be placed as its own chunk — but only
+        # by shrinking this chunk, and only when that still leaves a legal
+        # chunk on both sides (remaining >= 2 * min_chunk). Otherwise no split
+        # respecting min/max exists at all; keep max_chunk and let the honest
+        # leftover fall out of the loop as reported shortfall rather than
+        # handing back a chunk bigger than max_chunk.
+        if 0 < remaining - take < min_chunk and remaining >= 2 * min_chunk:
+            take = remaining - min_chunk
         sizes.append(take)
         remaining -= take
     return sizes

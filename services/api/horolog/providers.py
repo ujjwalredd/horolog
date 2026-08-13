@@ -221,6 +221,8 @@ class CalDAVProvider:
                         continue
                     if str(component.get("TRANSP", "OPAQUE")).upper() == "TRANSPARENT":
                         continue
+                    if str(component.get("STATUS", "")).upper() == "CANCELLED":
+                        continue
                     start = as_datetime(getattr(component.get("DTSTART"), "dt", None), self._zone)
                     finish = as_datetime(getattr(component.get("DTEND"), "dt", None), self._zone)
                     if start is None:

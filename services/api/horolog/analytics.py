@@ -76,6 +76,27 @@ class Analytics(BaseModel):
         return 0.0 if not self.scheduled_minutes else self.focus_minutes / self.scheduled_minutes
 
 
+def _day_spans(start_slot: int, end_slot: int) -> list[tuple[int, int, int]]:
+    """Split [start_slot, end_slot) into per-day (day, local_start, local_end) pieces.
+
+    A busy event is not bounded to one day the way a solver-placed block is
+    (`AllowedWindow` guarantees that; nothing does for a real calendar event) —
+    an out-of-office spanning several days or a flight crossing midnight has to
+    be attributed to every day it actually occupies, not dumped whole onto the
+    day it starts.
+    """
+    out: list[tuple[int, int, int]] = []
+    day = start_slot // SLOTS_PER_DAY
+    cursor = start_slot
+    while cursor < end_slot:
+        day_end = (day + 1) * SLOTS_PER_DAY
+        piece_end = min(end_slot, day_end)
+        out.append((day, cursor - day * SLOTS_PER_DAY, piece_end - day * SLOTS_PER_DAY))
+        cursor = piece_end
+        day += 1
+    return out
+
+
 def _runs(occupied: list[tuple[int, int]], lo: int, hi: int) -> list[int]:
     """Lengths of the free gaps inside [lo, hi) given sorted occupied spans."""
     gaps: list[int] = []
@@ -122,10 +143,11 @@ def analyse(
     after_hours = 0
     for event in busy:
         minutes = slots_to_minutes(event.end_slot - event.start_slot)
-        per_day_meeting[event.start_slot // SLOTS_PER_DAY] += minutes
         offset = event.start_slot % SLOTS_PER_DAY
         if offset < day_start or offset >= day_end:
             after_hours += minutes
+        for day, day_lo, day_hi in _day_spans(event.start_slot, event.end_slot):
+            per_day_meeting[day] += slots_to_minutes(day_hi - day_lo)
 
     occupied_by_day: dict[int, list[tuple[int, int]]] = defaultdict(list)
     for block in plan.blocks:
@@ -133,16 +155,18 @@ def analyse(
             (block.start_slot % SLOTS_PER_DAY, block.end_slot % SLOTS_PER_DAY or SLOTS_PER_DAY)
         )
     for event in busy:
-        occupied_by_day[event.start_slot // SLOTS_PER_DAY].append(
-            (event.start_slot % SLOTS_PER_DAY, event.end_slot % SLOTS_PER_DAY or SLOTS_PER_DAY)
-        )
+        for day, day_lo, day_hi in _day_spans(event.start_slot, event.end_slot):
+            occupied_by_day[day].append((day_lo, day_hi))
 
     days: list[DayLoad] = []
     longest_overall = 0
     for day in range(horizon_days):
         spans = sorted(occupied_by_day.get(day, []))
         gaps = _runs(spans, day_start, day_end)
-        longest = slots_to_minutes(max(gaps)) if gaps else slots_to_minutes(window)
+        # `_runs` already returns [window] itself when nothing is occupied, so
+        # an empty result here means the opposite of "free all day" — the
+        # occupied spans left no gap at all.
+        longest = slots_to_minutes(max(gaps)) if gaps else 0
         longest_overall = max(longest_overall, longest)
         days.append(
             DayLoad(

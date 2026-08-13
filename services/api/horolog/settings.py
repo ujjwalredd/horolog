@@ -52,7 +52,14 @@ def host_timezone() -> str:
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="HOROLOG_", env_file=ENV_FILES, extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="HOROLOG_", env_file=ENV_FILES, extra="forbid")
+    """`forbid`, not `ignore`: a `HOROLOG_`-prefixed var that doesn't match any
+    field below is far more likely a typo (`HOROLOG_GOOGLE_CLIENT_SECERT`)
+    than a var meant for something else — silently ignoring it just turns
+    into "why doesn't this OAuth connection work" days later. Vars without
+    the prefix (POSTGRES_PASSWORD, PATH, ...) are filtered out before this
+    check ever sees them, so this can't collide with the rest of the
+    environment."""
 
     database_url: str = "sqlite+aiosqlite:///./horolog.db"
     """Any SQLAlchemy async URL. SQLite for a single-user self-host, Postgres

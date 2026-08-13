@@ -184,9 +184,12 @@ async def _refresh(cfg: Settings, provider: str, refresh_token: str) -> dict[str
                 _TOKEN_URLS[provider], data=payload, headers={"Accept": "application/json"}
             )
             response.raise_for_status()
-            return dict(response.json())
+            body = dict(response.json())
     except httpx.HTTPError as exc:
         raise OAuthError(f"{provider} token refresh failed: {exc}") from exc
+    if not body.get("access_token"):
+        raise OAuthError(body.get("error_description") or body.get("error") or "no token returned")
+    return body
 
 
 # --------------------------------------------------------------------------

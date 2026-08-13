@@ -307,7 +307,14 @@ app.add_middleware(
 
 
 @app.get("/api/health")
-async def health() -> dict[str, str]:
+async def health(db: AsyncSession = Depends(session)) -> dict[str, str]:
+    # A process that answers HTTP but can't reach its database is not
+    # healthy — Docker's healthcheck (and anything restarting on it) needs
+    # to see that, not a static 200 that's identical whether Postgres is up.
+    try:
+        await db.execute(select(1))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"database unreachable: {exc}") from exc
     return {"status": "ok"}
 
 

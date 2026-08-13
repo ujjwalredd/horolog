@@ -26,7 +26,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: horolog
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-horolog}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: horolog
     volumes:
       - db-data:/var/lib/postgresql/data
@@ -80,7 +80,7 @@ services:
       # Overridable so the SQLite fallback above (delete `db`, set this in
       # .env) actually works — it used to be hardcoded here, which made that
       # instruction a no-op.
-      HOROLOG_DATABASE_URL: ${HOROLOG_DATABASE_URL:-postgresql+asyncpg://horolog:${POSTGRES_PASSWORD:-horolog}@db:5432/horolog}
+      HOROLOG_DATABASE_URL: ${HOROLOG_DATABASE_URL:-postgresql+asyncpg://horolog:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/horolog}
       HOROLOG_LLM_PROVIDER: ${HOROLOG_LLM_PROVIDER:-openai}
       HOROLOG_LLM_BASE_URL: ${HOROLOG_LLM_BASE_URL:-http://ollama:11434/v1}
       HOROLOG_LLM_MODEL: ${HOROLOG_LLM_MODEL:-qwen3:8b}
